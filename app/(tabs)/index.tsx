@@ -13,6 +13,7 @@ import {
   Animated,
 } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/colors';
 import { JournalPhase, PromptAnswer } from '../../types';
 import { getPrompt1, getPrompt2 } from '../../constants/prompts';
@@ -485,7 +486,7 @@ function CompleteView({ reframe, streak }: { reframe: string | null; streak: num
 
       {streak > 0 && (
         <View style={styles.streakPill}>
-          <Text style={styles.streakPillFlame}>🔥</Text>
+          <Ionicons name="flame" size={18} color={Colors.magenta} />
           <Text style={styles.streakPillText}>
             {streak} {streak === 1 ? 'day' : 'days'} in a row
           </Text>
@@ -651,13 +652,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: Colors.yellow,
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.borderDark,
     borderRadius: 100,
     paddingVertical: 10,
     paddingHorizontal: 20,
     marginTop: 24,
   },
-  streakPillFlame: { fontSize: 18 },
   streakPillText: { fontSize: 16, fontWeight: '800', color: Colors.text },
   editTonightBtn: {
     borderWidth: 1.5,

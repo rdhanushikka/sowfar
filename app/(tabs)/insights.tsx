@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/colors';
 import { Alert } from 'react-native';
 import { getAllEntries, getCachedAllEntries, computeStreak } from '../../services/db';
@@ -92,12 +93,14 @@ export default function InsightsScreen() {
         <Text style={styles.header}>You</Text>
 
         <View style={styles.streakCard}>
-          <Text style={styles.streakFlame}>{streak > 0 ? '🔥' : '🌱'}</Text>
+          <Ionicons
+            name={streak > 0 ? 'flame' : 'leaf-outline'}
+            size={34}
+            color={streak > 0 ? Colors.magenta : Colors.textSecondary}
+          />
           <View>
             <Text style={styles.streakNumber}>{streak}</Text>
-            <Text style={styles.streakLabel}>
-              {streak === 1 ? 'day streak' : 'day streak'}
-            </Text>
+            <Text style={styles.streakLabel}>day streak</Text>
           </View>
           {streak === 0 && (
             <Text style={styles.streakHint}>Write tonight to start your streak.</Text>
@@ -233,13 +236,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: Colors.yellow,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
     borderRadius: 6,
     padding: 20,
     marginBottom: 24,
   },
-  streakFlame: { fontSize: 40 },
   streakNumber: { fontSize: 32, fontWeight: '900', color: Colors.text, lineHeight: 36 },
-  streakLabel: { fontSize: 13, fontWeight: '700', color: Colors.text, textTransform: 'uppercase', letterSpacing: 0.5 },
-  streakHint: { flex: 1, fontSize: 13, color: Colors.text, opacity: 0.7, textAlign: 'right' },
+  streakLabel: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  streakHint: { flex: 1, fontSize: 13, color: Colors.textSecondary, textAlign: 'right' },
 });
