@@ -24,6 +24,8 @@ import {
   getEntriesForWeek,
   getWeeklySummary,
   upsertWeeklySummary,
+  getAllEntries,
+  computeStreak,
   localDateStr,
   mondayOfWeek,
 } from '../../services/db';
@@ -50,6 +52,7 @@ export default function TonightScreen() {
   const [freeWrite, setFreeWrite] = useState('');
   const [reframe, setReframe] = useState<string | null>(null);
   const [reframeRevealed, setReframeRevealed] = useState(false);
+  const [streak, setStreak] = useState(0);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -70,6 +73,8 @@ export default function TonightScreen() {
     if (today) {
       setPhase('complete');
       setReframe(today.reframe ?? null);
+      const all = await getAllEntries();
+      setStreak(computeStreak(all.map(e => e.date)));
       return;
     }
 
@@ -145,6 +150,10 @@ export default function TonightScreen() {
     fadeTransition('saving');
     const entry = await getTodayEntry();
     await upsertEntry({ ...entry, free_write: freeWrite });
+
+    // Refresh the streak now that today's entry is complete.
+    const all = await getAllEntries();
+    setStreak(computeStreak(all.map(e => e.date)));
 
     if (reframe) {
       fadeTransition('reframe');
@@ -225,7 +234,7 @@ export default function TonightScreen() {
               onDone={() => fadeTransition('complete')}
             />
           )}
-          {phase === 'complete' && <CompleteView reframe={reframe} />}
+          {phase === 'complete' && <CompleteView reframe={reframe} streak={streak} />}
         </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -467,12 +476,22 @@ function ReframeView({
   );
 }
 
-function CompleteView({ reframe }: { reframe: string | null }) {
+function CompleteView({ reframe, streak }: { reframe: string | null; streak: number }) {
   return (
     <View style={styles.centered}>
       <Text style={styles.completeEmoji}>✦</Text>
       <Text style={styles.completeTitle}>See you tomorrow.</Text>
       <Text style={styles.completeSubtitle}>Tonight's entry is saved.</Text>
+
+      {streak > 0 && (
+        <View style={styles.streakPill}>
+          <Text style={styles.streakPillFlame}>🔥</Text>
+          <Text style={styles.streakPillText}>
+            {streak} {streak === 1 ? 'day' : 'days'} in a row
+          </Text>
+        </View>
+      )}
+
       <TouchableOpacity
         style={styles.editTonightBtn}
         onPress={() => router.push({ pathname: '/edit', params: { date: localDateStr() } })}
@@ -628,6 +647,18 @@ const styles = StyleSheet.create({
   completeEmoji: { fontSize: 40, color: Colors.primary, marginBottom: 16 },
   completeTitle: { fontSize: 28, fontWeight: '800', color: Colors.text, marginBottom: 8, letterSpacing: -0.5 },
   completeSubtitle: { fontSize: 16, color: Colors.textSecondary },
+  streakPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.yellow,
+    borderRadius: 100,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    marginTop: 24,
+  },
+  streakPillFlame: { fontSize: 18 },
+  streakPillText: { fontSize: 16, fontWeight: '800', color: Colors.text },
   editTonightBtn: {
     borderWidth: 1.5,
     borderColor: Colors.borderDark,

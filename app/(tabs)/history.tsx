@@ -11,7 +11,7 @@ import {
 import { useFocusEffect, router } from 'expo-router';
 import { Colors } from '../../constants/colors';
 import { JournalEntry } from '../../types';
-import { getAllEntries, isEditable } from '../../services/db';
+import { getAllEntries, getCachedAllEntries, isEditable } from '../../services/db';
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -30,7 +30,14 @@ export default function HistoryScreen() {
   );
 
   async function load() {
-    setLoading(true);
+    // Paint instantly from the local mirror if we have one.
+    const cached = await getCachedAllEntries();
+    if (cached) {
+      setEntries(cached);
+      setLoading(false);
+    }
+
+    // Revalidate against Supabase.
     const all = await getAllEntries();
     setEntries(all);
     setLoading(false);

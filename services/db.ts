@@ -1,6 +1,13 @@
 import { supabase, getUserId } from './supabase';
 import { JournalEntry, WeeklySummary } from '../types';
-import { getCachedEntry, cacheEntry, mergeCachedEntry, clearCachedEntry } from './cache';
+import {
+  getCachedEntry,
+  cacheEntry,
+  mergeCachedEntry,
+  clearCachedEntry,
+  getCachedEntries,
+  cacheEntries,
+} from './cache';
 
 async function requireUserId(): Promise<string> {
   const id = await getUserId();
@@ -107,6 +114,10 @@ export async function updateEntryByDate(
   await mergeCachedEntry(date, fields);
 }
 
+export async function getCachedAllEntries(): Promise<JournalEntry[] | null> {
+  return getCachedEntries();
+}
+
 export async function getAllEntries(): Promise<JournalEntry[]> {
   const userId = await requireUserId();
 
@@ -116,7 +127,34 @@ export async function getAllEntries(): Promise<JournalEntry[]> {
     .eq('user_id', userId)
     .order('date', { ascending: false });
 
-  return (data ?? []) as JournalEntry[];
+  const list = (data ?? []) as JournalEntry[];
+  await cacheEntries(list);
+  return list;
+}
+
+// Consecutive-day streak, counting back from today (or yesterday if today's
+// entry isn't done yet, so the streak stays alive until a full day is missed).
+export function computeStreak(dates: string[]): number {
+  const set = new Set(dates);
+  const today = localDateStr();
+  const yest = yesterdayStr();
+
+  let cursor: Date;
+  if (set.has(today)) cursor = new Date(today + 'T00:00:00');
+  else if (set.has(yest)) cursor = new Date(yest + 'T00:00:00');
+  else return 0;
+
+  let streak = 0;
+  while (true) {
+    const ds = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+    if (set.has(ds)) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  return streak;
 }
 
 export async function getEntriesForWeek(weekStart: string): Promise<JournalEntry[]> {

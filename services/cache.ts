@@ -39,3 +39,23 @@ export async function clearCachedEntry(date: string): Promise<void> {
     // non-fatal
   }
 }
+
+// Mirror of the full entries list (for the Past tab's first paint).
+const LIST_KEY = 'sowfar:entries:all';
+
+export async function getCachedEntries(): Promise<JournalEntry[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(LIST_KEY);
+    return raw ? (JSON.parse(raw) as JournalEntry[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function cacheEntries(list: JournalEntry[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(LIST_KEY, JSON.stringify(list));
+  } catch {
+    // non-fatal
+  }
+}

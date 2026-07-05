@@ -11,7 +11,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { Colors } from '../../constants/colors';
 import { Alert } from 'react-native';
-import { getAllEntries } from '../../services/db';
+import { getAllEntries, getCachedAllEntries, computeStreak } from '../../services/db';
 import { generateInsights } from '../../services/claude';
 import { signOut } from '../../services/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,6 +21,7 @@ const CACHE_KEY = 'sowfar:insights';
 
 export default function InsightsScreen() {
   const [entryCount, setEntryCount] = useState(0);
+  const [streak, setStreak] = useState(0);
   const [patterns, setPatterns] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -32,9 +33,17 @@ export default function InsightsScreen() {
   );
 
   async function load() {
-    setLoading(true);
+    // Instant paint from the local mirror.
+    const cached = await getCachedAllEntries();
+    if (cached) {
+      setEntryCount(cached.length);
+      setStreak(computeStreak(cached.map(e => e.date)));
+      setLoading(false);
+    }
+
     const entries = await getAllEntries();
     setEntryCount(entries.length);
+    setStreak(computeStreak(entries.map(e => e.date)));
 
     if (entries.length >= MIN_ENTRIES) {
       const cached = await AsyncStorage.getItem(CACHE_KEY);
@@ -81,6 +90,19 @@ export default function InsightsScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.header}>You</Text>
+
+        <View style={styles.streakCard}>
+          <Text style={styles.streakFlame}>{streak > 0 ? '🔥' : '🌱'}</Text>
+          <View>
+            <Text style={styles.streakNumber}>{streak}</Text>
+            <Text style={styles.streakLabel}>
+              {streak === 1 ? 'day streak' : 'day streak'}
+            </Text>
+          </View>
+          {streak === 0 && (
+            <Text style={styles.streakHint}>Write tonight to start your streak.</Text>
+          )}
+        </View>
 
         {locked ? (
           <View style={styles.lockedCard}>
@@ -206,4 +228,18 @@ const styles = StyleSheet.create({
 
   signOutBtn: { alignItems: 'center', marginTop: 48, paddingVertical: 12 },
   signOutText: { fontSize: 14, color: Colors.textSecondary },
+
+  streakCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: Colors.yellow,
+    borderRadius: 6,
+    padding: 20,
+    marginBottom: 24,
+  },
+  streakFlame: { fontSize: 40 },
+  streakNumber: { fontSize: 32, fontWeight: '900', color: Colors.text, lineHeight: 36 },
+  streakLabel: { fontSize: 13, fontWeight: '700', color: Colors.text, textTransform: 'uppercase', letterSpacing: 0.5 },
+  streakHint: { flex: 1, fontSize: 13, color: Colors.text, opacity: 0.7, textAlign: 'right' },
 });
