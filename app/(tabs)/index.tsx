@@ -18,6 +18,8 @@ import { Colors } from '../../constants/colors';
 import { JournalPhase, PromptAnswer } from '../../types';
 import { getPrompt1, getPrompt2 } from '../../constants/prompts';
 import { analyzeEntry, generateWeeklySummary } from '../../services/claude';
+import { getDailyQuote } from '../../services/quote';
+import { Quote } from '../../constants/quotes';
 import {
   getTodayEntry,
   getCachedTodayEntry,
@@ -54,6 +56,7 @@ export default function TonightScreen() {
   const [reframe, setReframe] = useState<string | null>(null);
   const [reframeRevealed, setReframeRevealed] = useState(false);
   const [streak, setStreak] = useState(0);
+  const [quote, setQuote] = useState<Quote | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -76,6 +79,7 @@ export default function TonightScreen() {
       setReframe(today.reframe ?? null);
       const all = await getAllEntries();
       setStreak(computeStreak(all.map(e => e.date)));
+      getDailyQuote().then(setQuote).catch(() => {});
       return;
     }
 
@@ -155,6 +159,7 @@ export default function TonightScreen() {
     // Refresh the streak now that today's entry is complete.
     const all = await getAllEntries();
     setStreak(computeStreak(all.map(e => e.date)));
+    getDailyQuote().then(setQuote).catch(() => {});
 
     if (reframe) {
       fadeTransition('reframe');
@@ -235,7 +240,7 @@ export default function TonightScreen() {
               onDone={() => fadeTransition('complete')}
             />
           )}
-          {phase === 'complete' && <CompleteView reframe={reframe} streak={streak} />}
+          {phase === 'complete' && <CompleteView reframe={reframe} streak={streak} quote={quote} />}
         </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -477,12 +482,27 @@ function ReframeView({
   );
 }
 
-function CompleteView({ reframe, streak }: { reframe: string | null; streak: number }) {
+function CompleteView({
+  reframe,
+  streak,
+  quote,
+}: {
+  reframe: string | null;
+  streak: number;
+  quote: Quote | null;
+}) {
   return (
     <View style={styles.centered}>
       <Text style={styles.completeEmoji}>✦</Text>
       <Text style={styles.completeTitle}>See you tomorrow.</Text>
       <Text style={styles.completeSubtitle}>Tonight's entry is saved.</Text>
+
+      {quote && (
+        <View style={styles.quoteCard}>
+          <Text style={styles.quoteText}>“{quote.text}”</Text>
+          <Text style={styles.quoteAuthor}>— {quote.author}</Text>
+        </View>
+      )}
 
       {streak > 0 && (
         <View style={styles.streakPill}>
@@ -648,6 +668,19 @@ const styles = StyleSheet.create({
   completeEmoji: { fontSize: 40, color: Colors.primary, marginBottom: 16 },
   completeTitle: { fontSize: 28, fontWeight: '800', color: Colors.text, marginBottom: 8, letterSpacing: -0.5 },
   completeSubtitle: { fontSize: 16, color: Colors.textSecondary },
+  quoteCard: {
+    alignSelf: 'stretch',
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 6,
+    padding: 22,
+    marginTop: 28,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary,
+  },
+  quoteText: { fontSize: 18, color: Colors.text, lineHeight: 28, fontWeight: '500' },
+  quoteAuthor: { fontSize: 13, color: Colors.textSecondary, marginTop: 12, fontWeight: '600' },
   streakPill: {
     flexDirection: 'row',
     alignItems: 'center',

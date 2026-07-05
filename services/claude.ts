@@ -99,6 +99,56 @@ Write a warm, personal 2–3 sentence reflection on their week. Notice patterns,
   return data.content[0].text.trim();
 }
 
+export async function pickQuoteIndex(
+  entries: { prompts: PromptAnswer[]; freeWrite: string }[],
+  quotes: { text: string; author: string }[]
+): Promise<number> {
+  const entriesText = entries
+    .map(e => {
+      const pa = e.prompts.map(p => `${p.answer}`).join(' ');
+      return `${pa} ${e.freeWrite}`.trim();
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  const quoteList = quotes.map((q, i) => `${i}. "${q.text}" — ${q.author}`).join('\n');
+
+  const prompt = `Here is what someone has been writing in their journal recently:
+
+${entriesText}
+
+Here is a list of quotes:
+${quoteList}
+
+Choose the single quote that would most resonate with where this person seems to be right now — something that would feel meaningful, not random. Return ONLY valid JSON with the index number:
+{ "index": 0 }`;
+
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 100,
+      temperature: 0.7,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Quote match failed: HTTP ${res.status}`);
+
+  const data = await res.json();
+  const text: string = data.content[0].text;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Could not parse quote index.');
+
+  const parsed = JSON.parse(match[0]) as { index: number };
+  return parsed.index;
+}
+
 export async function generateInsights(
   entries: { date: string; prompts: PromptAnswer[]; freeWrite: string }[]
 ): Promise<string> {
