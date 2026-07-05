@@ -1,0 +1,59 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f9f5f2"/>
+      <stop offset="1" stop-color="#e7e3f0"/>
+    </linearGradient>
+    <linearGradient id="soil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8584bd"/>
+      <stop offset="1" stop-color="#565589"/>
+    </linearGradient>
+    <linearGradient id="seed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fcdd97"/>
+      <stop offset="1" stop-color="#f9cc73"/>
+    </linearGradient>
+  </defs>
+
+  <!-- sky -->
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#sky)"/>
+
+  <!-- soil with a gentle mound -->
+  <path d="M0,470
+           C 200,430 340,455 512,455
+           C 684,455 824,430 1024,470
+           L 1024,1024 L 0,1024 Z"
+        fill="url(#soil)"/>
+
+  <!-- soil top highlight line -->
+  <path d="M0,470
+           C 200,430 340,455 512,455
+           C 684,455 824,430 1024,470"
+        fill="none" stroke="#9a99cc" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- taproot with small branches -->
+  <g stroke="#6f6ea6" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.8">
+    <path d="M512,730 C 512,790 508,830 500,884"/>
+    <path d="M508,800 C 486,818 472,838 462,864"/>
+    <path d="M506,796 C 528,814 544,832 556,858"/>
+  </g>
+
+  <!-- seed -->
+  <g transform="rotate(-14 512 660)">
+    <ellipse cx="512" cy="660" rx="96" ry="128" fill="url(#seed)"/>
+    <ellipse cx="480" cy="612" rx="26" ry="40" fill="#ffffff" opacity="0.35"/>
+  </g>
+
+  <!-- sprout stem rising through the soil line -->
+  <path d="M512,560 C 512,505 512,455 512,395"
+        fill="none" stroke="#8fae63" stroke-width="16" stroke-linecap="round"/>
+
+  <!-- two leaves -->
+  <path d="M512,430
+           C 470,430 432,405 420,362
+           C 468,356 506,382 512,430 Z"
+        fill="#b5c995"/>
+  <path d="M512,410
+           C 554,410 592,385 604,342
+           C 556,336 518,362 512,410 Z"
+        fill="#a7bd85"/>
+</svg>
