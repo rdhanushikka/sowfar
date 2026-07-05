@@ -1,5 +1,6 @@
 import { supabase, getUserId } from './supabase';
 import { JournalEntry, WeeklySummary } from '../types';
+import { getCachedEntry, cacheEntry, mergeCachedEntry, clearCachedEntry } from './cache';
 
 async function requireUserId(): Promise<string> {
   const id = await getUserId();
@@ -31,6 +32,11 @@ export function mondayOfWeek(dateStr: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Instant read from the local mirror. Source of truth stays Supabase.
+export async function getCachedTodayEntry(): Promise<JournalEntry | null> {
+  return getCachedEntry(localDateStr());
+}
+
 export async function getTodayEntry(): Promise<JournalEntry | null> {
   const userId = await requireUserId();
   const today = localDateStr();
@@ -42,7 +48,12 @@ export async function getTodayEntry(): Promise<JournalEntry | null> {
     .eq('date', today)
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    // No row in DB (authoritative) — drop any stale mirror.
+    await clearCachedEntry(today);
+    return null;
+  }
+  await cacheEntry(data as JournalEntry);
   return data as JournalEntry;
 }
 
@@ -54,6 +65,12 @@ export async function upsertEntry(entry: Partial<JournalEntry>): Promise<void> {
     { ...entry, user_id: userId, date: today },
     { onConflict: 'user_id,date' }
   );
+  // Mirror the write locally so the next open is instant.
+  await mergeCachedEntry(today, { ...entry, user_id: userId, date: today });
+}
+
+export async function getCachedEntryByDate(date: string): Promise<JournalEntry | null> {
+  return getCachedEntry(date);
 }
 
 export async function getEntryByDate(date: string): Promise<JournalEntry | null> {
@@ -66,7 +83,11 @@ export async function getEntryByDate(date: string): Promise<JournalEntry | null>
     .eq('date', date)
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    await clearCachedEntry(date);
+    return null;
+  }
+  await cacheEntry(data as JournalEntry);
   return data as JournalEntry;
 }
 
@@ -82,6 +103,8 @@ export async function updateEntryByDate(
     .update(fields)
     .eq('user_id', userId)
     .eq('date', date);
+  // Mirror the edit locally.
+  await mergeCachedEntry(date, fields);
 }
 
 export async function getAllEntries(): Promise<JournalEntry[]> {

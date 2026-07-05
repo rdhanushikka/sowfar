@@ -19,6 +19,7 @@ import { getPrompt1, getPrompt2 } from '../../constants/prompts';
 import { analyzeEntry, generateWeeklySummary } from '../../services/claude';
 import {
   getTodayEntry,
+  getCachedTodayEntry,
   upsertEntry,
   getEntriesForWeek,
   getWeeklySummary,
@@ -57,6 +58,14 @@ export default function TonightScreen() {
   }, []);
 
   async function load() {
+    // Instant paint from the local mirror if today's entry already exists.
+    const cached = await getCachedTodayEntry();
+    if (cached) {
+      setReframe(cached.reframe ?? null);
+      setPhase('complete');
+    }
+
+    // Revalidate against Supabase (source of truth).
     const today = await getTodayEntry();
     if (today) {
       setPhase('complete');

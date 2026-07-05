@@ -14,7 +14,7 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { Colors } from '../constants/colors';
 import { JournalEntry, PromptAnswer } from '../types';
-import { getEntryByDate, updateEntryByDate, isEditable } from '../services/db';
+import { getEntryByDate, getCachedEntryByDate, updateEntryByDate, isEditable } from '../services/db';
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -35,15 +35,26 @@ export default function EditScreen() {
     load();
   }, [date]);
 
+  function apply(e: JournalEntry) {
+    setEntry(e);
+    setAnswers(e.prompts.map(p => p.answer));
+    setFollowupAnswer(e.followup?.answer ?? '');
+    setFreeWrite(e.free_write);
+  }
+
   async function load() {
     if (!date) return;
-    const e = await getEntryByDate(date);
-    if (e) {
-      setEntry(e);
-      setAnswers(e.prompts.map(p => p.answer));
-      setFollowupAnswer(e.followup?.answer ?? '');
-      setFreeWrite(e.free_write);
+
+    // Instant paint from the local mirror.
+    const cached = await getCachedEntryByDate(date);
+    if (cached) {
+      apply(cached);
+      setLoading(false);
     }
+
+    // Revalidate against Supabase.
+    const e = await getEntryByDate(date);
+    if (e) apply(e);
     setLoading(false);
   }
 
