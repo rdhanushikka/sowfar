@@ -1,5 +1,11 @@
-import { supabase, ensureSignedIn } from './supabase';
+import { supabase, getUserId } from './supabase';
 import { JournalEntry, WeeklySummary } from '../types';
+
+async function requireUserId(): Promise<string> {
+  const id = await getUserId();
+  if (!id) throw new Error('NOT_SIGNED_IN');
+  return id;
+}
 
 export function localDateStr(): string {
   const d = new Date();
@@ -15,7 +21,7 @@ export function mondayOfWeek(dateStr: string): string {
 }
 
 export async function getTodayEntry(): Promise<JournalEntry | null> {
-  const userId = await ensureSignedIn();
+  const userId = await requireUserId();
   const today = localDateStr();
 
   const { data, error } = await supabase
@@ -30,7 +36,7 @@ export async function getTodayEntry(): Promise<JournalEntry | null> {
 }
 
 export async function upsertEntry(entry: Partial<JournalEntry>): Promise<void> {
-  const userId = await ensureSignedIn();
+  const userId = await requireUserId();
   const today = localDateStr();
 
   await supabase.from('entries').upsert(
@@ -40,7 +46,7 @@ export async function upsertEntry(entry: Partial<JournalEntry>): Promise<void> {
 }
 
 export async function getAllEntries(): Promise<JournalEntry[]> {
-  const userId = await ensureSignedIn();
+  const userId = await requireUserId();
 
   const { data } = await supabase
     .from('entries')
@@ -52,7 +58,7 @@ export async function getAllEntries(): Promise<JournalEntry[]> {
 }
 
 export async function getEntriesForWeek(weekStart: string): Promise<JournalEntry[]> {
-  const userId = await ensureSignedIn();
+  const userId = await requireUserId();
 
   // Mon through Sat of that week
   const start = new Date(weekStart + 'T00:00:00');
@@ -73,7 +79,7 @@ export async function getEntriesForWeek(weekStart: string): Promise<JournalEntry
 }
 
 export async function getWeeklySummary(weekStart: string): Promise<WeeklySummary | null> {
-  const userId = await ensureSignedIn();
+  const userId = await requireUserId();
 
   const { data } = await supabase
     .from('weekly_summaries')
@@ -86,7 +92,7 @@ export async function getWeeklySummary(weekStart: string): Promise<WeeklySummary
 }
 
 export async function upsertWeeklySummary(weekStart: string, summary: string): Promise<void> {
-  const userId = await ensureSignedIn();
+  const userId = await requireUserId();
 
   await supabase.from('weekly_summaries').upsert(
     { user_id: userId, week_start: weekStart, summary },

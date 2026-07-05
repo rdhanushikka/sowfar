@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Colors } from '../../constants/colors';
+import { Alert } from 'react-native';
 import { getAllEntries } from '../../services/db';
 import { generateInsights } from '../../services/claude';
+import { signOut } from '../../services/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MIN_ENTRIES = 30;
@@ -119,8 +121,23 @@ export default function InsightsScreen() {
             )}
           </>
         )}
+
+        <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.7}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function handleSignOut() {
+  Alert.alert(
+    'Sign out?',
+    'Your journal stays safe and will be here when you sign back in with Apple.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+    ]
   );
 }
 
@@ -186,4 +203,7 @@ const styles = StyleSheet.create({
 
   refreshBtn: { alignItems: 'center', marginTop: 16 },
   refreshText: { fontSize: 14, color: Colors.textSecondary, textDecorationLine: 'underline' },
+
+  signOutBtn: { alignItems: 'center', marginTop: 48, paddingVertical: 12 },
+  signOutText: { fontSize: 14, color: Colors.textSecondary },
 });
