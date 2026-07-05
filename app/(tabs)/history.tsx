@@ -8,10 +8,10 @@ import {
   SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { Colors } from '../../constants/colors';
 import { JournalEntry } from '../../types';
-import { getAllEntries } from '../../services/db';
+import { getAllEntries, isEditable } from '../../services/db';
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -102,6 +102,16 @@ export default function HistoryScreen() {
                     <Text style={styles.reframeText}>{entry.reframe}</Text>
                   </View>
                 )}
+
+                {isEditable(entry.date) && (
+                  <TouchableOpacity
+                    style={styles.editBtn}
+                    onPress={() => router.push({ pathname: '/edit', params: { date: entry.date } })}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.editBtnText}>Edit entry</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </TouchableOpacity>
@@ -163,4 +173,14 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   reframeText: { fontSize: 15, color: Colors.text, fontWeight: '600', lineHeight: 22 },
+
+  editBtn: {
+    borderWidth: 1.5,
+    borderColor: Colors.borderDark,
+    borderRadius: 100,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  editBtnText: { fontSize: 15, fontWeight: '700', color: Colors.text },
 });

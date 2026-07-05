@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Animated,
 } from 'react-native';
+import { router } from 'expo-router';
 import { Colors } from '../../constants/colors';
 import { JournalPhase, PromptAnswer } from '../../types';
 import { getPrompt1, getPrompt2 } from '../../constants/prompts';
@@ -463,6 +464,13 @@ function CompleteView({ reframe }: { reframe: string | null }) {
       <Text style={styles.completeEmoji}>✦</Text>
       <Text style={styles.completeTitle}>See you tomorrow.</Text>
       <Text style={styles.completeSubtitle}>Tonight's entry is saved.</Text>
+      <TouchableOpacity
+        style={styles.editTonightBtn}
+        onPress={() => router.push({ pathname: '/edit', params: { date: localDateStr() } })}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.editTonightText}>Edit tonight's entry</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -611,6 +619,15 @@ const styles = StyleSheet.create({
   completeEmoji: { fontSize: 40, color: Colors.primary, marginBottom: 16 },
   completeTitle: { fontSize: 28, fontWeight: '800', color: Colors.text, marginBottom: 8, letterSpacing: -0.5 },
   completeSubtitle: { fontSize: 16, color: Colors.textSecondary },
+  editTonightBtn: {
+    borderWidth: 1.5,
+    borderColor: Colors.borderDark,
+    borderRadius: 100,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    marginTop: 28,
+  },
+  editTonightText: { fontSize: 15, fontWeight: '700', color: Colors.text },
 
   reframeTease: {
     borderWidth: 1,

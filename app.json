@@ -10,7 +10,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sowfar.app",
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -32,6 +35,13 @@
           "sounds": []
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0d3fb670-e2ae-4e6d-86ab-c768183dcdd5"
+      }
+    },
+    "owner": "rdhanushikka"
   }
 }

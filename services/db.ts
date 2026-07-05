@@ -12,6 +12,17 @@ export function localDateStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+export function yesterdayStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// An entry is editable if it's from today or yesterday (local time).
+export function isEditable(dateStr: string): boolean {
+  return dateStr === localDateStr() || dateStr === yesterdayStr();
+}
+
 export function mondayOfWeek(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
   const day = d.getDay(); // 0=Sun
@@ -43,6 +54,34 @@ export async function upsertEntry(entry: Partial<JournalEntry>): Promise<void> {
     { ...entry, user_id: userId, date: today },
     { onConflict: 'user_id,date' }
   );
+}
+
+export async function getEntryByDate(date: string): Promise<JournalEntry | null> {
+  const userId = await requireUserId();
+
+  const { data, error } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('date', date)
+    .single();
+
+  if (error || !data) return null;
+  return data as JournalEntry;
+}
+
+// Update the editable text fields of an entry for a given date.
+export async function updateEntryByDate(
+  date: string,
+  fields: { prompts: JournalEntry['prompts']; followup: JournalEntry['followup']; free_write: string }
+): Promise<void> {
+  const userId = await requireUserId();
+
+  await supabase
+    .from('entries')
+    .update(fields)
+    .eq('user_id', userId)
+    .eq('date', date);
 }
 
 export async function getAllEntries(): Promise<JournalEntry[]> {
