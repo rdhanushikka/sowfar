@@ -19,12 +19,12 @@ import {
   devSeedEntries,
   devClearEntries,
 } from '../../services/db';
-import { generateInsights } from '../../services/claude';
 import { signOut } from '../../services/supabase';
 import { advanceDay, getDayOffset } from '../../services/clock';
+import { PATTERN_MIN_ENTRIES, getCachedPatterns, refreshPatterns } from '../../services/insights';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const MIN_ENTRIES = __DEV__ ? 5 : 14;
+const MIN_ENTRIES = PATTERN_MIN_ENTRIES;
 const CACHE_KEY = 'sowfar:insights';
 
 export default function InsightsScreen() {
@@ -49,16 +49,13 @@ export default function InsightsScreen() {
       setLoading(false);
     }
 
+    // Show any patterns already generated in the background.
+    const cachedPatterns = await getCachedPatterns();
+    if (cachedPatterns) setPatterns(cachedPatterns);
+
     const entries = await getAllEntries();
     setEntryCount(entries.length);
     setStreak(computeStreak(entries.map(e => e.date)));
-
-    if (entries.length >= MIN_ENTRIES) {
-      const cached = await AsyncStorage.getItem(CACHE_KEY);
-      if (cached) {
-        setPatterns(JSON.parse(cached));
-      }
-    }
 
     setLoading(false);
   }
@@ -73,20 +70,8 @@ export default function InsightsScreen() {
 
   async function handleGenerate() {
     setGenerating(true);
-    try {
-      const entries = await getAllEntries();
-      const text = await generateInsights(
-        entries.map(e => ({ date: e.date, prompts: e.prompts, freeWrite: e.free_write }))
-      );
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]) as { patterns: string[] };
-        setPatterns(parsed.patterns);
-        await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(parsed.patterns));
-      }
-    } catch {
-      // silent
-    }
+    const result = await refreshPatterns();
+    if (result) setPatterns(result);
     setGenerating(false);
   }
 

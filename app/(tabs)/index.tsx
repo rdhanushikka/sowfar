@@ -19,6 +19,7 @@ import { JournalPhase, PromptAnswer } from '../../types';
 import { getPrompt1, getPrompt2 } from '../../constants/prompts';
 import { shouldAskFollowup, generateFollowup, generateReframe, generateWeeklySummary } from '../../services/claude';
 import { getDailyQuote } from '../../services/quote';
+import { refreshPatterns } from '../../services/insights';
 import { Quote } from '../../constants/quotes';
 import { now } from '../../services/clock';
 import {
@@ -174,6 +175,9 @@ export default function TonightScreen() {
     const all = await getAllEntries();
     setStreak(computeStreak(all.map(e => e.date)));
     getDailyQuote().then(setQuote).catch(() => {});
+
+    // Regenerate patterns in the background so the You tab is ready.
+    refreshPatterns().catch(() => {});
 
     if (rf) {
       fadeTransition('reframe');
