@@ -30,6 +30,7 @@ import {
   getWeeklySummary,
   upsertWeeklySummary,
   getAllEntries,
+  getCachedAllEntries,
   computeStreak,
   localDateStr,
   mondayOfWeek,
@@ -44,6 +45,20 @@ function isSunday(): boolean {
 
 function getDayLabel(): string {
   return now().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function headerDate(): string {
+  const d = now();
+  const wd = d.toLocaleDateString('en-US', { weekday: 'long' });
+  const md = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  return `${wd} · ${md}`;
+}
+
+function getGreeting(): string {
+  const h = now().getHours();
+  if (h < 12) return 'Good morning.';
+  if (h < 17) return 'Good afternoon.';
+  return 'Good evening.';
 }
 
 export default function TonightScreen() {
@@ -70,6 +85,12 @@ export default function TonightScreen() {
   }, []);
 
   async function load() {
+    // Quote and streak power both the landing and completion screens.
+    getDailyQuote().then(setQuote).catch(() => {});
+    getCachedAllEntries().then(list => {
+      if (list) setStreak(computeStreak(list.map(e => e.date)));
+    });
+
     // Instant paint from the local mirror if today's entry already exists.
     const cached = await getCachedTodayEntry();
     if (cached) {
@@ -84,9 +105,11 @@ export default function TonightScreen() {
       setReframe(today.reframe ?? null);
       const all = await getAllEntries();
       setStreak(computeStreak(all.map(e => e.date)));
-      getDailyQuote().then(setQuote).catch(() => {});
       return;
     }
+
+    // Not done yet — refresh the streak for the landing header.
+    getAllEntries().then(all => setStreak(computeStreak(all.map(e => e.date)))).catch(() => {});
 
     if (isSunday()) {
       const weekStart = mondayOfWeek(localDateStr());
@@ -107,9 +130,9 @@ export default function TonightScreen() {
       }
 
       setWeeklySummary(summary);
-      setPhase(summary ? 'weekly-summary' : 'prompt1');
+      setPhase(summary ? 'weekly-summary' : 'landing');
     } else {
-      setPhase('prompt1');
+      setPhase('landing');
     }
   }
 
@@ -199,10 +222,19 @@ export default function TonightScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
           {phase === 'init' && <LoadingView />}
+          {phase === 'landing' && (
+            <LandingView
+              dateLabel={headerDate()}
+              greeting={getGreeting()}
+              streak={streak}
+              quote={quote}
+              onStart={() => fadeTransition('prompt1')}
+            />
+          )}
           {phase === 'weekly-summary' && weeklySummary && (
             <WeeklySummaryView
               summary={weeklySummary}
-              onContinue={() => fadeTransition('prompt1')}
+              onContinue={() => fadeTransition('landing')}
             />
           )}
           {phase === 'prompt1' && (
@@ -470,6 +502,51 @@ function FreeWriteView({
   );
 }
 
+function LandingView({
+  dateLabel,
+  greeting,
+  streak,
+  quote,
+  onStart,
+}: {
+  dateLabel: string;
+  greeting: string;
+  streak: number;
+  quote: Quote | null;
+  onStart: () => void;
+}) {
+  return (
+    <ScrollView contentContainerStyle={styles.completeContent} showsVerticalScrollIndicator={false}>
+      <View style={styles.homeHeader}>
+        <Text style={styles.homeDate}>{dateLabel}</Text>
+        {streak > 0 && (
+          <View style={styles.headerStreak}>
+            <Ionicons name="flame" size={15} color={Colors.magenta} />
+            <Text style={styles.headerStreakText}>{streak}</Text>
+          </View>
+        )}
+      </View>
+
+      <Text style={styles.landingGreeting}>{greeting}</Text>
+      <Text style={styles.landingSub}>A few quiet minutes to close the day.</Text>
+
+      {quote && (
+        <View style={styles.quoteHero}>
+          <Text style={styles.quoteHeroLabel}>A THOUGHT</Text>
+          <Text style={styles.quoteHeroText}>“{quote.text}”</Text>
+          <Text style={styles.quoteHeroAuthor}>— {quote.author}</Text>
+        </View>
+      )}
+
+      <View style={styles.homeFooter}>
+        <TouchableOpacity style={styles.primaryPill} onPress={onStart} activeOpacity={0.85}>
+          <Text style={styles.primaryPillText}>Add today's entry</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
 function CompleteView({
   reframe,
   revealed,
@@ -484,15 +561,32 @@ function CompleteView({
   quote: Quote | null;
 }) {
   return (
-    <ScrollView contentContainerStyle={styles.completeScroll} showsVerticalScrollIndicator={false}>
-      <Text style={styles.completeEmoji}>✦</Text>
-      <Text style={styles.completeTitle}>See you tomorrow.</Text>
-      <Text style={styles.completeSubtitle}>Tonight's entry is saved.</Text>
+    <ScrollView contentContainerStyle={styles.completeContent} showsVerticalScrollIndicator={false}>
+      {/* Header: date + streak */}
+      <View style={styles.homeHeader}>
+        <Text style={styles.homeDate}>{headerDate()}</Text>
+        {streak > 0 && (
+          <View style={styles.headerStreak}>
+            <Ionicons name="flame" size={15} color={Colors.magenta} />
+            <Text style={styles.headerStreakText}>{streak}</Text>
+          </View>
+        )}
+      </View>
 
+      {/* Quote hero */}
+      {quote && (
+        <View style={styles.quoteHero}>
+          <Text style={styles.quoteHeroLabel}>A THOUGHT</Text>
+          <Text style={styles.quoteHeroText}>“{quote.text}”</Text>
+          <Text style={styles.quoteHeroAuthor}>— {quote.author}</Text>
+        </View>
+      )}
+
+      {/* Reframe */}
       {reframe && (
         !revealed ? (
           <TouchableOpacity style={styles.reframeTease} onPress={onReveal} activeOpacity={0.8}>
-            <Text style={styles.reframeTeaseText}>A different way to see this →</Text>
+            <Text style={styles.reframeTeaseText}>A different way to see this  →</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.reframeCard}>
@@ -501,29 +595,20 @@ function CompleteView({
         )
       )}
 
-      {quote && (
-        <View style={styles.quoteCard}>
-          <Text style={styles.quoteText}>“{quote.text}”</Text>
-          <Text style={styles.quoteAuthor}>— {quote.author}</Text>
+      {/* Footer: saved note + edit button */}
+      <View style={styles.homeFooter}>
+        <View style={styles.savedRow}>
+          <Text style={styles.footerMark}>✦</Text>
+          <Text style={styles.footerSaved}>Saved for tonight</Text>
         </View>
-      )}
-
-      {streak > 0 && (
-        <View style={styles.streakPill}>
-          <Ionicons name="flame" size={18} color={Colors.magenta} />
-          <Text style={styles.streakPillText}>
-            {streak} {streak === 1 ? 'day' : 'days'} in a row
-          </Text>
-        </View>
-      )}
-
-      <TouchableOpacity
-        style={styles.editTonightBtn}
-        onPress={() => router.push({ pathname: '/edit', params: { date: localDateStr() } })}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.editTonightText}>Edit tonight's entry</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.secondaryPill}
+          onPress={() => router.push({ pathname: '/edit', params: { date: localDateStr() } })}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.secondaryPillText}>Edit today's entry</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -716,7 +801,7 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 20,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 16,
     borderStyle: 'dashed',
   },
   reframeTeaseText: { fontSize: 15, color: Colors.textSecondary, fontWeight: '600' },
@@ -724,7 +809,79 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.green,
     borderRadius: 6,
     padding: 22,
-    marginTop: 24,
+    marginTop: 16,
   },
   reframeText: { fontSize: 18, color: Colors.text, fontWeight: '600', lineHeight: 28 },
+
+  // ── Completion / home screen ───────────────────────────────────────────────
+  completeContent: { flexGrow: 1, padding: 24, paddingTop: 24 },
+  homeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 28,
+  },
+  homeDate: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  headerStreak: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 100,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+  },
+  headerStreakText: { fontSize: 14, fontWeight: '800', color: Colors.text },
+
+  quoteHero: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderLeftWidth: 5,
+    borderLeftColor: Colors.primary,
+    borderRadius: 6,
+    padding: 24,
+  },
+  quoteHeroLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: Colors.primary,
+    marginBottom: 16,
+  },
+  quoteHeroText: { fontSize: 22, color: Colors.text, lineHeight: 32, fontWeight: '600' },
+  quoteHeroAuthor: { fontSize: 14, color: Colors.textSecondary, marginTop: 16, fontWeight: '600' },
+
+  landingGreeting: { fontSize: 30, fontWeight: '800', color: Colors.text, letterSpacing: -0.5, marginBottom: 8 },
+  landingSub: { fontSize: 16, color: Colors.textSecondary, marginBottom: 28, lineHeight: 22 },
+
+  homeFooter: { marginTop: 'auto', paddingTop: 28, gap: 16 },
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  footerMark: { fontSize: 16, color: Colors.primary },
+  footerSaved: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
+
+  primaryPill: {
+    backgroundColor: Colors.primary,
+    borderRadius: 100,
+    paddingVertical: 17,
+    alignItems: 'center',
+  },
+  primaryPillText: { fontSize: 16, fontWeight: '700', color: Colors.textOnPrimary, letterSpacing: 0.3 },
+  secondaryPill: {
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.borderDark,
+    borderRadius: 100,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  secondaryPillText: { fontSize: 16, fontWeight: '700', color: Colors.text },
 });

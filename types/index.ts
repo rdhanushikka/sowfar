@@ -33,6 +33,7 @@ export interface WeeklySummary {
 
 export type JournalPhase =
   | 'init'
+  | 'landing'
   | 'weekly-summary'
   | 'prompt1'
   | 'prompt2'
