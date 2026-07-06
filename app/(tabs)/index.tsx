@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/colors';
 import { JournalPhase, PromptAnswer } from '../../types';
 import { getPrompt1, getPrompt2 } from '../../constants/prompts';
-import { analyzeEntry, generateWeeklySummary } from '../../services/claude';
+import { shouldAskFollowup, generateFollowup, generateReframe, generateWeeklySummary } from '../../services/claude';
 import { getDailyQuote } from '../../services/quote';
 import { Quote } from '../../constants/quotes';
 import { now } from '../../services/clock';
@@ -117,8 +117,6 @@ export default function TonightScreen() {
   }
 
   async function submitPrompts() {
-    fadeTransition('analyzing');
-
     const prompts: PromptAnswer[] = [
       { question: prompt1Ref.current.question, answer: answer1, type: prompt1Ref.current.type },
     ];
@@ -126,21 +124,24 @@ export default function TonightScreen() {
       prompts.push({ question: prompt2Ref.current.question, answer: answer2, type: prompt2Ref.current.type });
     }
 
-    try {
-      const analysis = await analyzeEntry(prompts, '');
-      setFollowupQuestion(analysis.followup);
-      setReframe(analysis.reframe);
+    await upsertEntry({ prompts, followup: null, free_write: '', reframe: null });
 
-      await upsertEntry({ prompts, followup: null, free_write: '', reframe: analysis.reframe });
-
-      if (analysis.followup) {
-        fadeTransition('followup');
-      } else {
-        fadeTransition('freewrite');
+    // Only 1 in 5 nights do we even touch the API for a follow-up.
+    if (shouldAskFollowup()) {
+      fadeTransition('analyzing');
+      try {
+        const question = await generateFollowup(prompts);
+        if (question) {
+          setFollowupQuestion(question);
+          fadeTransition('followup');
+          return;
+        }
+      } catch {
+        // fall through to free write
       }
-    } catch {
-      fadeTransition('freewrite');
     }
+
+    fadeTransition('freewrite');
   }
 
   async function submitFollowup() {
@@ -157,12 +158,24 @@ export default function TonightScreen() {
     const entry = await getTodayEntry();
     await upsertEntry({ ...entry, free_write: freeWrite });
 
+    // Reframe is computed now — with the full entry, including the free write.
+    let rf: string | null = null;
+    try {
+      rf = await generateReframe(entry?.prompts ?? [], entry?.followup ?? null, freeWrite);
+    } catch {
+      rf = null;
+    }
+    if (rf) {
+      await upsertEntry({ ...entry, free_write: freeWrite, reframe: rf });
+      setReframe(rf);
+    }
+
     // Refresh the streak now that today's entry is complete.
     const all = await getAllEntries();
     setStreak(computeStreak(all.map(e => e.date)));
     getDailyQuote().then(setQuote).catch(() => {});
 
-    if (reframe) {
+    if (rf) {
       fadeTransition('reframe');
     } else {
       fadeTransition('complete');

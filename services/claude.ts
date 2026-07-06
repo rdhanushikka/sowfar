@@ -6,48 +6,12 @@ const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_KEY!;
 // How often a follow-up is even eligible. Claude can still decline within this.
 const FOLLOWUP_CHANCE = 0.2;
 
-export interface ClaudeAnalysis {
-  followup: string | null;
-  reframe: string | null;
+// Code-side gate. When this returns false we never touch the API for a follow-up.
+export function shouldAskFollowup(): boolean {
+  return Math.random() < FOLLOWUP_CHANCE;
 }
 
-export async function analyzeEntry(
-  prompts: PromptAnswer[],
-  freeWrite: string
-): Promise<ClaudeAnalysis> {
-  const promptLines = prompts
-    .map(p => `Q: ${p.question}\nA: ${p.answer}`)
-    .join('\n\n');
-
-  const freeWriteSection = freeWrite.trim()
-    ? `\nFree write:\n${freeWrite}`
-    : '';
-
-  // Gate the follow-up in code, not in the prompt — LLMs are unreliable at
-  // self-applying a probability. Only when this roll passes does Claude even
-  // consider a follow-up (and it can still decline if nothing is worth asking).
-  const followupAllowed = Math.random() < FOLLOWUP_CHANCE;
-
-  const followupTask = followupAllowed
-    ? `1. FOLLOW_UP: Find the ACTUAL heart of what they wrote — the thing they clearly care most about tonight — and consider one follow-up about THAT. Never latch onto a passing, incidental, or throwaway detail (e.g. someone mentioning "I was a bit tired" while the entry is really about gratitude). If the only thing to grab onto is a minor aside, return null.
-
-   Only ask if the emotional center is genuinely rich, specific, and unresolved — something a close friend would lean in about. If the entry is a simple, complete thought (a nice moment, a small thanks, an ordinary day), return null; it doesn't need prodding.
-
-   When you do ask, sound like a real friend texting back — casual, specific to their exact words, curious. NOT like a coach or therapist. Avoid clinical framings and stock phrases like "running on empty," "how are your energy levels," "how are you feeling about X lately," "sit with that." One short, natural question. Return null otherwise.`
-    : `1. FOLLOW_UP: Return null. Do not ask a follow-up tonight.`;
-
-  const prompt = `You are a thoughtful journaling companion. The user has answered their journal prompts for tonight.
-
-${promptLines}${freeWriteSection}
-
-Tasks:
-${followupTask}
-
-2. REFRAME: Look at the overall tone. If it is negative, conflicted, or self-critical, write one short punchy sentence (under 20 words) that gently reframes — like a smart friend who sees them clearly. Not preachy, not therapeutic. If the tone involves bad behavior, don't validate it — quietly nudge toward something better without lecturing. If the tone is neutral or positive, return null.
-
-Return ONLY valid JSON, nothing else:
-{ "followup": "question text" | null, "reframe": "one sentence" | null }`;
-
+async function callClaude(prompt: string, maxTokens: number): Promise<string> {
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
@@ -57,7 +21,7 @@ Return ONLY valid JSON, nothing else:
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
+      max_tokens: maxTokens,
       temperature: 1.0,
       messages: [{ role: 'user', content: prompt }],
     }),
@@ -69,14 +33,58 @@ Return ONLY valid JSON, nothing else:
   }
 
   const data = await res.json();
-  const text: string = data.content[0].text;
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return { followup: null, reframe: null };
+  return data.content[0].text as string;
+}
 
-  const parsed = JSON.parse(match[0]) as ClaudeAnalysis;
-  // Enforce the gate regardless of what the model returned.
-  if (!followupAllowed) parsed.followup = null;
-  return parsed;
+// Only call this when shouldAskFollowup() has already passed — so no API call
+// is made on the ~80% of nights without a follow-up.
+export async function generateFollowup(prompts: PromptAnswer[]): Promise<string | null> {
+  const promptLines = prompts.map(p => `Q: ${p.question}\nA: ${p.answer}`).join('\n\n');
+
+  const prompt = `You are a thoughtful journaling companion. Someone just answered their journal prompts for tonight.
+
+${promptLines}
+
+Find the ACTUAL heart of what they wrote — the thing they clearly care most about — and consider ONE follow-up about THAT. Never latch onto a passing, incidental, or throwaway detail (e.g. someone mentioning "I was a bit tired" while the entry is really about gratitude). If the only thing to grab onto is a minor aside, return null.
+
+Only ask if the emotional center is genuinely rich, specific, and unresolved — something a close friend would lean in about. If the entry is a simple, complete thought (a nice moment, a small thanks, an ordinary day), return null; it doesn't need prodding.
+
+When you do ask, sound like a real friend texting back — casual, specific to their exact words, curious. NOT like a coach or therapist. Avoid clinical framings and stock phrases like "running on empty," "how are your energy levels," "how are you feeling about X lately," "sit with that." One short, natural question.
+
+Return ONLY valid JSON: { "followup": "question text" | null }`;
+
+  const text = await callClaude(prompt, 256);
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  const parsed = JSON.parse(match[0]) as { followup: string | null };
+  return parsed.followup ?? null;
+}
+
+// Called after the free write, so the reframe reflects the whole entry.
+export async function generateReframe(
+  prompts: PromptAnswer[],
+  followup: { question: string; answer: string } | null,
+  freeWrite: string
+): Promise<string | null> {
+  const promptLines = prompts.map(p => `Q: ${p.question}\nA: ${p.answer}`).join('\n\n');
+  const followupSection = followup
+    ? `\nFollow-up:\nQ: ${followup.question}\nA: ${followup.answer}`
+    : '';
+  const freeWriteSection = freeWrite.trim() ? `\nFree write:\n${freeWrite}` : '';
+
+  const prompt = `You are a thoughtful journaling companion. Here is someone's full journal entry for tonight.
+
+${promptLines}${followupSection}${freeWriteSection}
+
+Look at the overall tone. If it is negative, conflicted, or self-critical, write one short punchy sentence (under 20 words) that gently reframes — like a smart friend who sees them clearly. Not preachy, not therapeutic. If the tone involves bad behavior, don't validate it — quietly nudge toward something better without lecturing. If the tone is neutral or positive, return null.
+
+Return ONLY valid JSON: { "reframe": "one sentence" | null }`;
+
+  const text = await callClaude(prompt, 256);
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  const parsed = JSON.parse(match[0]) as { reframe: string | null };
+  return parsed.reframe ?? null;
 }
 
 export async function generateWeeklySummary(
