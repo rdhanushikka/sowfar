@@ -33,6 +33,7 @@ export default function InsightsScreen() {
   const [patterns, setPatterns] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -133,15 +134,38 @@ export default function InsightsScreen() {
               </View>
             ) : (
               <>
-                <Text style={styles.sectionLabel}>What I notice about you</Text>
-                {patterns.map((p, i) => (
-                  <View key={i} style={[styles.patternCard, i % 2 === 0 ? styles.patternCard1 : styles.patternCard2]}>
-                    <Text style={styles.patternText}>{p}</Text>
+                <TouchableOpacity
+                  style={[styles.patternsToggle, collapsed && styles.patternsToggleCollapsed]}
+                  onPress={() => setCollapsed(c => !c)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.patternsToggleTextWrap}>
+                    <Text style={styles.patternsToggleTitle}>What I notice about you</Text>
+                    <Text style={styles.patternsToggleHint}>
+                      {collapsed ? `Tap to see ${patterns.length} patterns` : 'Tap to hide'}
+                    </Text>
                   </View>
-                ))}
-                <TouchableOpacity onPress={handleGenerate} disabled={generating} style={styles.refreshBtn}>
-                  <Text style={styles.refreshText}>{generating ? 'Refreshing...' : 'Refresh insights'}</Text>
+                  <View style={styles.patternsChevron}>
+                    <Ionicons
+                      name={collapsed ? 'chevron-down' : 'chevron-up'}
+                      size={20}
+                      color={Colors.primary}
+                    />
+                  </View>
                 </TouchableOpacity>
+
+                {!collapsed && (
+                  <>
+                    {patterns.map((p, i) => (
+                      <View key={i} style={[styles.patternCard, i % 2 === 0 ? styles.patternCard1 : styles.patternCard2]}>
+                        <Text style={styles.patternText}>{p}</Text>
+                      </View>
+                    ))}
+                    <TouchableOpacity onPress={handleGenerate} disabled={generating} style={styles.refreshBtn}>
+                      <Text style={styles.refreshText}>{generating ? 'Refreshing...' : 'Refresh insights'}</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </>
             )}
           </>
@@ -232,13 +256,30 @@ const styles = StyleSheet.create({
   },
   pillBtnText: { fontSize: 16, fontWeight: '700', color: Colors.textOnPrimary },
 
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+  patternsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.borderDark,
+    borderRadius: 6,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     marginBottom: 16,
+  },
+  patternsToggleCollapsed: { borderStyle: 'dashed' },
+  patternsToggleTextWrap: { flex: 1 },
+  patternsToggleTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  patternsToggleHint: { fontSize: 13, color: Colors.textSecondary, marginTop: 3 },
+  patternsChevron: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
   },
   patternCard: {
     borderRadius: 6,
