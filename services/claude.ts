@@ -3,6 +3,9 @@ import { PromptAnswer } from '../types';
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_KEY!;
 
+// How often a follow-up is even eligible. Claude can still decline within this.
+const FOLLOWUP_CHANCE = 0.2;
+
 export interface ClaudeAnalysis {
   followup: string | null;
   reframe: string | null;
@@ -20,12 +23,25 @@ export async function analyzeEntry(
     ? `\nFree write:\n${freeWrite}`
     : '';
 
+  // Gate the follow-up in code, not in the prompt — LLMs are unreliable at
+  // self-applying a probability. Only when this roll passes does Claude even
+  // consider a follow-up (and it can still decline if nothing is worth asking).
+  const followupAllowed = Math.random() < FOLLOWUP_CHANCE;
+
+  const followupTask = followupAllowed
+    ? `1. FOLLOW_UP: Find the ACTUAL heart of what they wrote — the thing they clearly care most about tonight — and consider one follow-up about THAT. Never latch onto a passing, incidental, or throwaway detail (e.g. someone mentioning "I was a bit tired" while the entry is really about gratitude). If the only thing to grab onto is a minor aside, return null.
+
+   Only ask if the emotional center is genuinely rich, specific, and unresolved — something a close friend would lean in about. If the entry is a simple, complete thought (a nice moment, a small thanks, an ordinary day), return null; it doesn't need prodding.
+
+   When you do ask, sound like a real friend texting back — casual, specific to their exact words, curious. NOT like a coach or therapist. Avoid clinical framings and stock phrases like "running on empty," "how are your energy levels," "how are you feeling about X lately," "sit with that." One short, natural question. Return null otherwise.`
+    : `1. FOLLOW_UP: Return null. Do not ask a follow-up tonight.`;
+
   const prompt = `You are a thoughtful journaling companion. The user has answered their journal prompts for tonight.
 
 ${promptLines}${freeWriteSection}
 
 Tasks:
-1. FOLLOW_UP: Should we ask a follow-up question? Only say yes if one of the answers reveals something emotionally interesting, specific, or unresolved — something a good friend would naturally want to know more about. Most of the time (about 80%), say no. If yes, write exactly one warm, curious follow-up question — not therapeutic, just genuinely interested, like a friend who wants to know more. Return null if no follow-up is needed.
+${followupTask}
 
 2. REFRAME: Look at the overall tone. If it is negative, conflicted, or self-critical, write one short punchy sentence (under 20 words) that gently reframes — like a smart friend who sees them clearly. Not preachy, not therapeutic. If the tone involves bad behavior, don't validate it — quietly nudge toward something better without lecturing. If the tone is neutral or positive, return null.
 
@@ -58,6 +74,8 @@ Return ONLY valid JSON, nothing else:
   if (!match) return { followup: null, reframe: null };
 
   const parsed = JSON.parse(match[0]) as ClaudeAnalysis;
+  // Enforce the gate regardless of what the model returned.
+  if (!followupAllowed) parsed.followup = null;
   return parsed;
 }
 
