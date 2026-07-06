@@ -35,6 +35,9 @@ import {
   mondayOfWeek,
 } from '../../services/db';
 
+// Below this much written text there's nothing worth reframing — skip the call.
+const REFRAME_MIN_CHARS = 60;
+
 function isSunday(): boolean {
   return now().getDay() === 0;
 }
@@ -155,34 +158,33 @@ export default function TonightScreen() {
   }
 
   async function submitFreeWrite() {
-    fadeTransition('saving');
     const entry = await getTodayEntry();
     await upsertEntry({ ...entry, free_write: freeWrite });
 
-    // Reframe is computed now — with the full entry, including the free write.
-    let rf: string | null = null;
-    try {
-      rf = await generateReframe(entry?.prompts ?? [], entry?.followup ?? null, freeWrite);
-    } catch {
-      rf = null;
-    }
-    if (rf) {
-      await upsertEntry({ ...entry, free_write: freeWrite, reframe: rf });
-      setReframe(rf);
-    }
-
-    // Refresh the streak now that today's entry is complete.
+    // Go straight to the completion screen — no waiting on Claude.
     const all = await getAllEntries();
     setStreak(computeStreak(all.map(e => e.date)));
     getDailyQuote().then(setQuote).catch(() => {});
-
-    // Regenerate patterns in the background so the You tab is ready.
     refreshPatterns().catch(() => {});
+    fadeTransition('complete');
 
-    if (rf) {
-      fadeTransition('reframe');
-    } else {
-      fadeTransition('complete');
+    // Reframe runs in the background, and only for entries with enough to say.
+    // If one comes back, it quietly appears on the completion screen.
+    const substance = [
+      ...(entry?.prompts ?? []).map(p => p.answer),
+      entry?.followup?.answer ?? '',
+      freeWrite,
+    ].join(' ').trim();
+
+    if (substance.length >= REFRAME_MIN_CHARS) {
+      generateReframe(entry?.prompts ?? [], entry?.followup ?? null, freeWrite)
+        .then(async rf => {
+          if (rf) {
+            await upsertEntry({ ...entry, free_write: freeWrite, reframe: rf });
+            setReframe(rf);
+          }
+        })
+        .catch(() => {});
     }
   }
 
@@ -249,16 +251,15 @@ export default function TonightScreen() {
               onDone={submitFreeWrite}
             />
           )}
-          {phase === 'saving' && <LoadingView label="Saving..." />}
-          {phase === 'reframe' && reframe && (
-            <ReframeView
+          {phase === 'complete' && (
+            <CompleteView
               reframe={reframe}
               revealed={reframeRevealed}
               onReveal={() => setReframeRevealed(true)}
-              onDone={() => fadeTransition('complete')}
+              streak={streak}
+              quote={quote}
             />
           )}
-          {phase === 'complete' && <CompleteView reframe={reframe} streak={streak} quote={quote} />}
         </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -469,51 +470,36 @@ function FreeWriteView({
   );
 }
 
-function ReframeView({
+function CompleteView({
   reframe,
   revealed,
   onReveal,
-  onDone,
-}: {
-  reframe: string;
-  revealed: boolean;
-  onReveal: () => void;
-  onDone: () => void;
-}) {
-  return (
-    <ScrollView contentContainerStyle={styles.scrollContent}>
-      <Text style={styles.completeEmoji}>✦</Text>
-      <Text style={styles.completeTitle}>Entry saved.</Text>
-
-      {!revealed ? (
-        <TouchableOpacity style={styles.reframeTease} onPress={onReveal}>
-          <Text style={styles.reframeTeaseText}>A different way to see this →</Text>
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.reframeCard}>
-          <Text style={styles.reframeText}>{reframe}</Text>
-        </View>
-      )}
-
-      <PillButton label="Done" onPress={onDone} style={{ marginTop: 32 }} />
-    </ScrollView>
-  );
-}
-
-function CompleteView({
-  reframe,
   streak,
   quote,
 }: {
   reframe: string | null;
+  revealed: boolean;
+  onReveal: () => void;
   streak: number;
   quote: Quote | null;
 }) {
   return (
-    <View style={styles.centered}>
+    <ScrollView contentContainerStyle={styles.completeScroll} showsVerticalScrollIndicator={false}>
       <Text style={styles.completeEmoji}>✦</Text>
       <Text style={styles.completeTitle}>See you tomorrow.</Text>
       <Text style={styles.completeSubtitle}>Tonight's entry is saved.</Text>
+
+      {reframe && (
+        !revealed ? (
+          <TouchableOpacity style={styles.reframeTease} onPress={onReveal} activeOpacity={0.8}>
+            <Text style={styles.reframeTeaseText}>A different way to see this →</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.reframeCard}>
+            <Text style={styles.reframeText}>{reframe}</Text>
+          </View>
+        )
+      )}
 
       {quote && (
         <View style={styles.quoteCard}>
@@ -538,7 +524,7 @@ function CompleteView({
       >
         <Text style={styles.editTonightText}>Edit tonight's entry</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -568,6 +554,7 @@ function PillButton({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  completeScroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   scrollContent: { padding: 24, paddingBottom: 60 },
 
   dateLabel: {
