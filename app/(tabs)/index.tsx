@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../constants/colors';
 import { JournalPhase, PromptAnswer } from '../../types';
 import { getPrompt1, getPrompt2 } from '../../constants/prompts';
@@ -67,6 +68,7 @@ export default function TonightScreen() {
 
   const prompt1Ref = useRef(getPrompt1());
   const prompt2Ref = useRef(getPrompt2(prompt1Ref.current.question));
+  const pendingPromptsRef = useRef<PromptAnswer[]>([]);
 
   const [answer1, setAnswer1] = useState('');
   const [answer2, setAnswer2] = useState('');
@@ -74,7 +76,7 @@ export default function TonightScreen() {
   const [followupAnswer, setFollowupAnswer] = useState('');
   const [freeWrite, setFreeWrite] = useState('');
   const [reframe, setReframe] = useState<string | null>(null);
-  const [reframeRevealed, setReframeRevealed] = useState(false);
+  const [reframeAcked, setReframeAcked] = useState(false);
   const [streak, setStreak] = useState(0);
   const [quote, setQuote] = useState<Quote | null>(null);
 
@@ -89,6 +91,11 @@ export default function TonightScreen() {
     getDailyQuote().then(setQuote).catch(() => {});
     getCachedAllEntries().then(list => {
       if (list) setStreak(computeStreak(list.map(e => e.date)));
+    });
+
+    // Was today's reframe already dismissed?
+    AsyncStorage.getItem('sowfar:reframeAck').then(d => {
+      if (d === localDateStr()) setReframeAcked(true);
     });
 
     // Instant paint from the local mirror if today's entry already exists.
@@ -143,6 +150,8 @@ export default function TonightScreen() {
     });
   }
 
+  // Nothing is written to the DB until the free write is submitted, so exiting
+  // the flow before then discards cleanly. Prompts are held here in the meantime.
   async function submitPrompts() {
     const prompts: PromptAnswer[] = [
       { question: prompt1Ref.current.question, answer: answer1, type: prompt1Ref.current.type },
@@ -150,8 +159,7 @@ export default function TonightScreen() {
     if (!isSunday()) {
       prompts.push({ question: prompt2Ref.current.question, answer: answer2, type: prompt2Ref.current.type });
     }
-
-    await upsertEntry({ prompts, followup: null, free_write: '', reframe: null });
+    pendingPromptsRef.current = prompts;
 
     // Only 1 in 5 nights do we even touch the API for a follow-up.
     if (shouldAskFollowup()) {
@@ -171,18 +179,19 @@ export default function TonightScreen() {
     fadeTransition('freewrite');
   }
 
-  async function submitFollowup() {
-    const entry = await getTodayEntry();
-    await upsertEntry({
-      ...entry,
-      followup: followupQuestion ? { question: followupQuestion, answer: followupAnswer } : null,
-    });
+  function submitFollowup() {
+    // Follow-up answer is already in state; nothing to persist yet.
     fadeTransition('freewrite');
   }
 
   async function submitFreeWrite() {
-    const entry = await getTodayEntry();
-    await upsertEntry({ ...entry, free_write: freeWrite });
+    const prompts = pendingPromptsRef.current;
+    const followup = followupQuestion
+      ? { question: followupQuestion, answer: followupAnswer }
+      : null;
+
+    // First and only save of the entry — now that it's actually complete.
+    await upsertEntry({ prompts, followup, free_write: freeWrite, reframe: null });
 
     // Go straight to the completion screen — no waiting on Claude.
     const all = await getAllEntries();
@@ -194,21 +203,38 @@ export default function TonightScreen() {
     // Reframe runs in the background, and only for entries with enough to say.
     // If one comes back, it quietly appears on the completion screen.
     const substance = [
-      ...(entry?.prompts ?? []).map(p => p.answer),
-      entry?.followup?.answer ?? '',
+      ...prompts.map(p => p.answer),
+      followup?.answer ?? '',
       freeWrite,
     ].join(' ').trim();
 
     if (substance.length >= REFRAME_MIN_CHARS) {
-      generateReframe(entry?.prompts ?? [], entry?.followup ?? null, freeWrite)
+      generateReframe(prompts, followup, freeWrite)
         .then(async rf => {
           if (rf) {
-            await upsertEntry({ ...entry, free_write: freeWrite, reframe: rf });
+            await upsertEntry({ prompts, followup, free_write: freeWrite, reframe: rf });
             setReframe(rf);
           }
         })
         .catch(() => {});
     }
+  }
+
+  // Dismiss the reframe for the rest of today.
+  async function ackReframe() {
+    setReframeAcked(true);
+    await AsyncStorage.setItem('sowfar:reframeAck', localDateStr());
+  }
+
+  // Leave the flow, discard in-progress input, and reset to the landing.
+  function exitFlow() {
+    setAnswer1('');
+    setAnswer2('');
+    setFollowupQuestion(null);
+    setFollowupAnswer('');
+    setFreeWrite('');
+    pendingPromptsRef.current = [];
+    fadeTransition('landing');
   }
 
   function canContinuePrompt2(): boolean {
@@ -250,6 +276,8 @@ export default function TonightScreen() {
                   submitPrompts();
                 }
               }}
+              onExit={exitFlow}
+              exitIcon="close"
               canContinue={answer1.trim().length > 0}
               step={1}
               totalSteps={isSunday() ? 2 : 3}
@@ -262,6 +290,8 @@ export default function TonightScreen() {
               value={answer2}
               onChange={setAnswer2}
               onContinue={submitPrompts}
+              onExit={() => fadeTransition('prompt1')}
+              exitIcon="chevron-back"
               canContinue={canContinuePrompt2()}
               step={2}
               totalSteps={3}
@@ -274,6 +304,7 @@ export default function TonightScreen() {
               value={followupAnswer}
               onChange={setFollowupAnswer}
               onContinue={submitFollowup}
+              onExit={exitFlow}
             />
           )}
           {phase === 'freewrite' && (
@@ -281,13 +312,14 @@ export default function TonightScreen() {
               value={freeWrite}
               onChange={setFreeWrite}
               onDone={submitFreeWrite}
+              onExit={exitFlow}
             />
           )}
           {phase === 'complete' && (
             <CompleteView
               reframe={reframe}
-              revealed={reframeRevealed}
-              onReveal={() => setReframeRevealed(true)}
+              reframeAcked={reframeAcked}
+              onAckReframe={ackReframe}
               streak={streak}
               quote={quote}
             />
@@ -305,6 +337,22 @@ function LoadingView({ label }: { label?: string }) {
     <View style={styles.centered}>
       <ActivityIndicator size="large" color={Colors.primary} />
       {label && <Text style={styles.loadingLabel}>{label}</Text>}
+    </View>
+  );
+}
+
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+function FlowTopBar({ icon, onPress }: { icon: IconName; onPress: () => void }) {
+  return (
+    <View style={styles.flowTopBar}>
+      <TouchableOpacity
+        onPress={onPress}
+        style={styles.flowExitBtn}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <Ionicons name={icon} size={24} color={Colors.text} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -327,6 +375,8 @@ function PromptView({
   value,
   onChange,
   onContinue,
+  onExit,
+  exitIcon,
   canContinue,
   step,
   totalSteps,
@@ -336,12 +386,15 @@ function PromptView({
   value: string;
   onChange: (v: string) => void;
   onContinue: () => void;
+  onExit: () => void;
+  exitIcon: IconName;
   canContinue: boolean;
   step: number;
   totalSteps: number;
 }) {
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <FlowTopBar icon={exitIcon} onPress={onExit} />
       <Text style={styles.dateLabel}>{dayLabel}</Text>
       <Text style={styles.stepDots}>{Array.from({ length: totalSteps }, (_, i) => i < step ? '●' : '○').join(' ')}</Text>
       <Text style={styles.promptText}>{question}</Text>
@@ -365,6 +418,8 @@ function Prompt2View({
   value,
   onChange,
   onContinue,
+  onExit,
+  exitIcon,
   canContinue,
   step,
   totalSteps,
@@ -374,12 +429,15 @@ function Prompt2View({
   value: string;
   onChange: (v: string) => void;
   onContinue: () => void;
+  onExit: () => void;
+  exitIcon: IconName;
   canContinue: boolean;
   step: number;
   totalSteps: number;
 }) {
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <FlowTopBar icon={exitIcon} onPress={onExit} />
       <Text style={styles.dateLabel}>{dayLabel}</Text>
       <Text style={styles.stepDots}>{Array.from({ length: totalSteps }, (_, i) => i < step ? '●' : '○').join(' ')}</Text>
       <Text style={styles.promptText}>{prompt.question}</Text>
@@ -446,14 +504,17 @@ function FollowupView({
   value,
   onChange,
   onContinue,
+  onExit,
 }: {
   question: string;
   value: string;
   onChange: (v: string) => void;
   onContinue: () => void;
+  onExit: () => void;
 }) {
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <FlowTopBar icon="close" onPress={onExit} />
       <View style={styles.followupCard}>
         <Text style={styles.followupLabel}>One more thing</Text>
         <Text style={styles.promptText}>{question}</Text>
@@ -479,13 +540,16 @@ function FreeWriteView({
   value,
   onChange,
   onDone,
+  onExit,
 }: {
   value: string;
   onChange: (v: string) => void;
   onDone: () => void;
+  onExit: () => void;
 }) {
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <FlowTopBar icon="close" onPress={onExit} />
       <Text style={styles.promptText}>Anything else on your mind tonight?</Text>
       <Text style={styles.freeWriteHint}>Optional — just write, no pressure.</Text>
       <TextInput
@@ -549,14 +613,14 @@ function LandingView({
 
 function CompleteView({
   reframe,
-  revealed,
-  onReveal,
+  reframeAcked,
+  onAckReframe,
   streak,
   quote,
 }: {
   reframe: string | null;
-  revealed: boolean;
-  onReveal: () => void;
+  reframeAcked: boolean;
+  onAckReframe: () => void;
   streak: number;
   quote: Quote | null;
 }) {
@@ -582,21 +646,23 @@ function CompleteView({
         </View>
       )}
 
-      {/* Reframe */}
-      {reframe && (
-        !revealed ? (
-          <TouchableOpacity style={styles.reframeTease} onPress={onReveal} activeOpacity={0.8}>
-            <Text style={styles.reframeTeaseText}>A different way to see this  →</Text>
-          </TouchableOpacity>
-        ) : (
+      {/* Footer: reframe (just above the action), saved note, edit button */}
+      <View style={styles.homeFooter}>
+        {reframe && !reframeAcked && (
           <View style={styles.reframeCard}>
+            <View style={styles.reframeHeader}>
+              <Text style={styles.reframeLabel}>ANOTHER WAY TO SEE IT</Text>
+              <TouchableOpacity
+                onPress={onAckReframe}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={18} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
             <Text style={styles.reframeText}>{reframe}</Text>
           </View>
-        )
-      )}
+        )}
 
-      {/* Footer: saved note + edit button */}
-      <View style={styles.homeFooter}>
         <View style={styles.savedRow}>
           <Text style={styles.footerMark}>✦</Text>
           <Text style={styles.footerSaved}>Saved for tonight</Text>
@@ -642,6 +708,13 @@ const styles = StyleSheet.create({
   completeScroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   scrollContent: { padding: 24, paddingBottom: 60 },
 
+  flowTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    marginLeft: -6,
+  },
+  flowExitBtn: { padding: 6 },
   dateLabel: {
     fontSize: 12,
     fontWeight: '600',
@@ -794,24 +867,26 @@ const styles = StyleSheet.create({
   },
   editTonightText: { fontSize: 15, fontWeight: '700', color: Colors.text },
 
-  reframeTease: {
-    borderWidth: 1,
-    borderColor: Colors.borderDark,
-    borderRadius: 6,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    marginTop: 16,
-    borderStyle: 'dashed',
-  },
-  reframeTeaseText: { fontSize: 15, color: Colors.textSecondary, fontWeight: '600' },
   reframeCard: {
     backgroundColor: Colors.green,
     borderRadius: 6,
-    padding: 22,
-    marginTop: 16,
+    padding: 20,
+    marginBottom: 20,
   },
-  reframeText: { fontSize: 18, color: Colors.text, fontWeight: '600', lineHeight: 28 },
+  reframeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  reframeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: Colors.text,
+    opacity: 0.55,
+  },
+  reframeText: { fontSize: 17, color: Colors.text, fontWeight: '600', lineHeight: 26 },
 
   // ── Completion / home screen ───────────────────────────────────────────────
   completeContent: { flexGrow: 1, padding: 24, paddingTop: 24 },
