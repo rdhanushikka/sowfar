@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { setupNotifications } from '../services/notifications';
 import { supabase } from '../services/supabase';
+import { initClock } from '../services/clock';
 import { Colors } from '../constants/colors';
 import type { Session } from '@supabase/supabase-js';
 
@@ -14,9 +15,11 @@ export default function RootLayout() {
   const segments = useSegments();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setReady(true);
+    initClock().finally(() => {
+      supabase.auth.getSession().then(({ data }) => {
+        setSession(data.session);
+        setReady(true);
+      });
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {

@@ -12,12 +12,19 @@ import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/colors';
 import { Alert } from 'react-native';
-import { getAllEntries, getCachedAllEntries, computeStreak } from '../../services/db';
+import {
+  getAllEntries,
+  getCachedAllEntries,
+  computeStreak,
+  devSeedEntries,
+  devClearEntries,
+} from '../../services/db';
 import { generateInsights } from '../../services/claude';
 import { signOut } from '../../services/supabase';
+import { advanceDay, getDayOffset } from '../../services/clock';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const MIN_ENTRIES = 30;
+const MIN_ENTRIES = __DEV__ ? 5 : 14;
 const CACHE_KEY = 'sowfar:insights';
 
 export default function InsightsScreen() {
@@ -54,6 +61,14 @@ export default function InsightsScreen() {
     }
 
     setLoading(false);
+  }
+
+  // Dev: run an action, clear derived caches, and reload.
+  async function runDev(action: () => Promise<void>) {
+    await action();
+    await AsyncStorage.multiRemove([CACHE_KEY, 'sowfar:quote']);
+    setPatterns([]);
+    await load();
   }
 
   async function handleGenerate() {
@@ -147,6 +162,29 @@ export default function InsightsScreen() {
           </>
         )}
 
+        {__DEV__ && (
+          <View style={styles.devPanel}>
+            <Text style={styles.devTitle}>DEV TOOLS</Text>
+            <Text style={styles.devInfo}>Day offset: {getDayOffset()}</Text>
+            <View style={styles.devRow}>
+              <TouchableOpacity style={styles.devBtn} onPress={() => runDev(() => advanceDay(1))}>
+                <Text style={styles.devBtnText}>Advance day +1</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.devBtn} onPress={() => runDev(() => advanceDay(-1))}>
+                <Text style={styles.devBtnText}>Day -1</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.devRow}>
+              <TouchableOpacity style={styles.devBtn} onPress={() => runDev(devSeedEntries)}>
+                <Text style={styles.devBtnText}>Seed sample entries</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.devBtn, styles.devBtnDanger]} onPress={() => runDev(devClearEntries)}>
+                <Text style={styles.devBtnText}>Clear all</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.7}>
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
@@ -229,8 +267,33 @@ const styles = StyleSheet.create({
   refreshBtn: { alignItems: 'center', marginTop: 16 },
   refreshText: { fontSize: 14, color: Colors.textSecondary, textDecorationLine: 'underline' },
 
-  signOutBtn: { alignItems: 'center', marginTop: 48, paddingVertical: 12 },
+  signOutBtn: { alignItems: 'center', marginTop: 24, paddingVertical: 12 },
   signOutText: { fontSize: 14, color: Colors.textSecondary },
+
+  devPanel: {
+    marginTop: 48,
+    padding: 16,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    backgroundColor: '#faf8f5',
+    gap: 10,
+  },
+  devTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 1, color: Colors.textSecondary },
+  devInfo: { fontSize: 13, color: Colors.textSecondary },
+  devRow: { flexDirection: 'row', gap: 10 },
+  devBtn: {
+    flex: 1,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+    borderRadius: 6,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  devBtnDanger: { borderColor: Colors.magenta },
+  devBtnText: { fontSize: 13, fontWeight: '700', color: Colors.text },
 
   streakCard: {
     flexDirection: 'row',

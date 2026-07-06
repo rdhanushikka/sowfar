@@ -59,3 +59,14 @@ export async function cacheEntries(list: JournalEntry[]): Promise<void> {
     // non-fatal
   }
 }
+
+// Wipe every mirrored entry and the list (used by dev reset/seed).
+export async function clearAllEntryCaches(): Promise<void> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const mine = keys.filter(k => k.startsWith(PREFIX) || k === LIST_KEY);
+    if (mine.length) await AsyncStorage.multiRemove(mine);
+  } catch {
+    // non-fatal
+  }
+}

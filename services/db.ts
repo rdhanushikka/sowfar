@@ -7,7 +7,10 @@ import {
   clearCachedEntry,
   getCachedEntries,
   cacheEntries,
+  clearAllEntryCaches,
 } from './cache';
+import { now, dateStr } from './clock';
+import { DEV_SAMPLES } from '../constants/devSamples';
 
 async function requireUserId(): Promise<string> {
   const id = await getUserId();
@@ -16,14 +19,13 @@ async function requireUserId(): Promise<string> {
 }
 
 export function localDateStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return dateStr(now());
 }
 
 export function yesterdayStr(): string {
-  const d = new Date();
+  const d = now();
   d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return dateStr(d);
 }
 
 // An entry is editable if it's from today or yesterday (local time).
@@ -198,4 +200,37 @@ export async function upsertWeeklySummary(weekStart: string, summary: string): P
     { user_id: userId, week_start: weekStart, summary },
     { onConflict: 'user_id,week_start' }
   );
+}
+
+// ── Dev-only helpers ─────────────────────────────────────────────────────────
+
+// Seed backdated sample entries (one per day, ending yesterday) so pattern
+// detection, streaks, and the weekly summary have material to work with.
+export async function devSeedEntries(): Promise<void> {
+  if (!__DEV__) return;
+  const userId = await requireUserId();
+
+  const rows = DEV_SAMPLES.map((s, i) => {
+    const d = now();
+    d.setDate(d.getDate() - (i + 1)); // yesterday, day before, ...
+    return {
+      user_id: userId,
+      date: dateStr(d),
+      prompts: s.prompts,
+      followup: s.followup ?? null,
+      free_write: s.free_write,
+      reframe: null,
+    };
+  });
+
+  await supabase.from('entries').upsert(rows, { onConflict: 'user_id,date' });
+  await clearAllEntryCaches();
+}
+
+export async function devClearEntries(): Promise<void> {
+  if (!__DEV__) return;
+  const userId = await requireUserId();
+  await supabase.from('entries').delete().eq('user_id', userId);
+  await supabase.from('weekly_summaries').delete().eq('user_id', userId);
+  await clearAllEntryCaches();
 }

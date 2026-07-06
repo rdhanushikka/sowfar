@@ -20,6 +20,7 @@ import { getPrompt1, getPrompt2 } from '../../constants/prompts';
 import { analyzeEntry, generateWeeklySummary } from '../../services/claude';
 import { getDailyQuote } from '../../services/quote';
 import { Quote } from '../../constants/quotes';
+import { now } from '../../services/clock';
 import {
   getTodayEntry,
   getCachedTodayEntry,
@@ -34,11 +35,11 @@ import {
 } from '../../services/db';
 
 function isSunday(): boolean {
-  return new Date().getDay() === 0;
+  return now().getDay() === 0;
 }
 
 function getDayLabel(): string {
-  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  return now().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
 export default function TonightScreen() {
