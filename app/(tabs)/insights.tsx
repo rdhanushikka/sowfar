@@ -70,7 +70,7 @@ export default function InsightsScreen() {
 
   async function handleGenerate() {
     setGenerating(true);
-    const result = await refreshPatterns();
+    const result = await refreshPatterns(true);
     if (result) setPatterns(result);
     setGenerating(false);
   }
