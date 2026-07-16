@@ -11,11 +11,49 @@ import {
 } from './cache';
 import { now, dateStr } from './clock';
 import { DEV_SAMPLES } from '../constants/devSamples';
+import { getJournalKey } from './vault';
+import { encryptString, decryptString } from './crypto';
+import { PromptAnswer } from '../types';
 
 async function requireUserId(): Promise<string> {
   const id = await getUserId();
   if (!id) throw new Error('NOT_SIGNED_IN');
   return id;
+}
+
+// ── Encryption ───────────────────────────────────────────────────────────────
+// Entry content is stored as a single encrypted blob in the `content` column;
+// only date/user_id/metadata stay in the clear (needed for queries and streaks).
+
+interface EntryContent {
+  prompts: PromptAnswer[];
+  followup: JournalEntry['followup'];
+  free_write: string;
+  reframe: string | null;
+}
+
+function encryptContent(c: EntryContent): string {
+  return encryptString(JSON.stringify(c), getJournalKey());
+}
+
+function decryptRow(row: any): JournalEntry {
+  let content: EntryContent = { prompts: [], followup: null, free_write: '', reframe: null };
+  if (row?.content) {
+    const dec = decryptString(row.content, getJournalKey());
+    if (dec) {
+      try { content = JSON.parse(dec); } catch { /* leave defaults */ }
+    }
+  }
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    date: row.date,
+    created_at: row.created_at,
+    prompts: content.prompts ?? [],
+    followup: content.followup ?? null,
+    free_write: content.free_write ?? '',
+    reframe: content.reframe ?? null,
+  };
 }
 
 export function localDateStr(): string {
@@ -62,16 +100,24 @@ export async function getTodayEntry(): Promise<JournalEntry | null> {
     await clearCachedEntry(today);
     return null;
   }
-  await cacheEntry(data as JournalEntry);
-  return data as JournalEntry;
+  const entry = decryptRow(data);
+  await cacheEntry(entry);
+  return entry;
 }
 
 export async function upsertEntry(entry: Partial<JournalEntry>): Promise<void> {
   const userId = await requireUserId();
   const today = localDateStr();
 
+  const content = encryptContent({
+    prompts: entry.prompts ?? [],
+    followup: entry.followup ?? null,
+    free_write: entry.free_write ?? '',
+    reframe: entry.reframe ?? null,
+  });
+
   await supabase.from('entries').upsert(
-    { ...entry, user_id: userId, date: today },
+    { user_id: userId, date: today, content },
     { onConflict: 'user_id,date' }
   );
   // Mirror the write locally so the next open is instant.
@@ -96,20 +142,33 @@ export async function getEntryByDate(date: string): Promise<JournalEntry | null>
     await clearCachedEntry(date);
     return null;
   }
-  await cacheEntry(data as JournalEntry);
-  return data as JournalEntry;
+  const entry = decryptRow(data);
+  await cacheEntry(entry);
+  return entry;
 }
 
-// Update the editable text fields of an entry for a given date.
+// Update the editable content of an entry for a given date.
 export async function updateEntryByDate(
   date: string,
-  fields: { prompts: JournalEntry['prompts']; followup: JournalEntry['followup']; free_write: string }
+  fields: {
+    prompts: JournalEntry['prompts'];
+    followup: JournalEntry['followup'];
+    free_write: string;
+    reframe: string | null;
+  }
 ): Promise<void> {
   const userId = await requireUserId();
 
+  const content = encryptContent({
+    prompts: fields.prompts,
+    followup: fields.followup,
+    free_write: fields.free_write,
+    reframe: fields.reframe ?? null,
+  });
+
   await supabase
     .from('entries')
-    .update(fields)
+    .update({ content })
     .eq('user_id', userId)
     .eq('date', date);
   // Mirror the edit locally.
@@ -129,7 +188,7 @@ export async function getAllEntries(): Promise<JournalEntry[]> {
     .eq('user_id', userId)
     .order('date', { ascending: false });
 
-  const list = (data ?? []) as JournalEntry[];
+  const list = (data ?? []).map(decryptRow);
   await cacheEntries(list);
   return list;
 }
@@ -177,7 +236,7 @@ export async function getEntriesForWeek(weekStart: string): Promise<JournalEntry
     .lte('date', endStr)
     .order('date', { ascending: true });
 
-  return (data ?? []) as JournalEntry[];
+  return (data ?? []).map(decryptRow);
 }
 
 export async function getWeeklySummary(weekStart: string): Promise<WeeklySummary | null> {
@@ -190,14 +249,17 @@ export async function getWeeklySummary(weekStart: string): Promise<WeeklySummary
     .eq('week_start', weekStart)
     .single();
 
-  return data as WeeklySummary | null;
+  if (!data) return null;
+  const summary = decryptString((data as any).summary, getJournalKey()) ?? '';
+  return { ...(data as WeeklySummary), summary };
 }
 
 export async function upsertWeeklySummary(weekStart: string, summary: string): Promise<void> {
   const userId = await requireUserId();
+  const enc = encryptString(summary, getJournalKey());
 
   await supabase.from('weekly_summaries').upsert(
-    { user_id: userId, week_start: weekStart, summary },
+    { user_id: userId, week_start: weekStart, summary: enc },
     { onConflict: 'user_id,week_start' }
   );
 }
@@ -216,10 +278,12 @@ export async function devSeedEntries(): Promise<void> {
     return {
       user_id: userId,
       date: dateStr(d),
-      prompts: s.prompts,
-      followup: s.followup ?? null,
-      free_write: s.free_write,
-      reframe: null,
+      content: encryptContent({
+        prompts: s.prompts,
+        followup: s.followup ?? null,
+        free_write: s.free_write,
+        reframe: null,
+      }),
     };
   });
 

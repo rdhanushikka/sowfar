@@ -20,6 +20,7 @@ import {
   devClearEntries,
 } from '../../services/db';
 import { signOut } from '../../services/supabase';
+import { lockVault } from '../../services/vault';
 import { advanceDay, getDayOffset } from '../../services/clock';
 import { PATTERN_MIN_ENTRIES, getCachedPatterns, refreshPatterns } from '../../services/insights';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -208,7 +209,14 @@ function handleSignOut() {
     'Your journal stays safe and will be here when you sign back in with Apple.',
     [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          await lockVault();
+          await signOut();
+        },
+      },
     ]
   );
 }

@@ -1,16 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { setupNotifications } from '../services/notifications';
 import { supabase } from '../services/supabase';
 import { initClock } from '../services/clock';
+import { hasVault, isUnlocked, loadCachedKey } from '../services/vault';
+import { VaultUiContext } from '../services/vaultUi';
 import { Colors } from '../constants/colors';
 import type { Session } from '@supabase/supabase-js';
 
+type VaultStatus = 'unknown' | 'setup' | 'unlock' | 'ready';
+
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
-  const [ready, setReady] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [vaultStatus, setVaultStatus] = useState<VaultStatus>('unknown');
   const router = useRouter();
   const segments = useSegments();
 
@@ -18,7 +23,7 @@ export default function RootLayout() {
     initClock().finally(() => {
       supabase.auth.getSession().then(({ data }) => {
         setSession(data.session);
-        setReady(true);
+        setAuthReady(true);
       });
     });
 
@@ -29,22 +34,47 @@ export default function RootLayout() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Decide whether the journal needs setup, unlock, or is already open.
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      if (!session) {
+        setVaultStatus('unknown');
+        return;
+      }
+      if (isUnlocked() || (await loadCachedKey())) {
+        if (!cancelled) setVaultStatus('ready');
+        return;
+      }
+      const exists = await hasVault();
+      if (!cancelled) setVaultStatus(exists ? 'unlock' : 'setup');
+    }
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
   useEffect(() => {
     if (session) setupNotifications().catch(() => {});
   }, [session]);
 
   useEffect(() => {
-    if (!ready) return;
-    const onLogin = segments[0] === 'login';
+    if (!authReady) return;
+    const group = segments[0];
 
-    if (!session && !onLogin) {
-      router.replace('/login');
-    } else if (session && onLogin) {
-      router.replace('/(tabs)');
+    if (!session) {
+      if (group !== 'login') router.replace('/login');
+      return;
     }
-  }, [ready, session, segments]);
+    if (vaultStatus === 'setup' && group !== 'vault-setup') router.replace('/vault-setup');
+    else if (vaultStatus === 'unlock' && group !== 'vault-unlock') router.replace('/vault-unlock');
+    else if (vaultStatus === 'ready' && group !== '(tabs)') router.replace('/(tabs)');
+  }, [authReady, session, vaultStatus, segments]);
 
-  if (!ready) {
+  const onUnlocked = useCallback(() => setVaultStatus('ready'), []);
+
+  if (!authReady) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -54,11 +84,15 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="login" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
-      </Stack>
+      <VaultUiContext.Provider value={{ onUnlocked }}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="login" />
+          <Stack.Screen name="vault-setup" />
+          <Stack.Screen name="vault-unlock" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
+        </Stack>
+      </VaultUiContext.Provider>
     </GestureHandlerRootView>
   );
 }

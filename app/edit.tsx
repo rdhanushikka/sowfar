@@ -75,6 +75,7 @@ export default function EditScreen() {
       prompts: updatedPrompts,
       followup: updatedFollowup,
       free_write: freeWrite,
+      reframe: entry.reframe ?? null,
     });
 
     setSaving(false);

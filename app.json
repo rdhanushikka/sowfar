@@ -34,7 +34,8 @@
           "color": "#8584bd",
           "sounds": []
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},
