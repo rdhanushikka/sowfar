@@ -13,12 +13,12 @@ import {
   Alert,
 } from 'react-native';
 import { Colors } from '../constants/colors';
-import { unlockVault, lockVault } from '../services/vault';
+import { unlockVault, lockVault, resetVault } from '../services/vault';
 import { signOut } from '../services/supabase';
 import { useVaultUi } from '../services/vaultUi';
 
 export default function VaultUnlockScreen() {
-  const { onUnlocked } = useVaultUi();
+  const { onUnlocked, onReset } = useVaultUi();
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -55,6 +55,25 @@ export default function VaultUnlockScreen() {
     ]);
   }
 
+  function handleForgot() {
+    Alert.alert(
+      'Start over?',
+      'Your password can’t be recovered. Starting over permanently deletes your existing journal so you can set a new password. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete & start over',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            await resetVault();
+            onReset();
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -87,6 +106,10 @@ export default function VaultUnlockScreen() {
             ) : (
               <Text style={styles.pillText}>Unlock</Text>
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.forgot} onPress={handleForgot}>
+            <Text style={styles.forgotText}>Forgot password? Start over</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.signOut} onPress={handleSignOut}>
@@ -124,6 +147,8 @@ const styles = StyleSheet.create({
   },
   pillDisabled: { opacity: 0.4 },
   pillText: { fontSize: 16, fontWeight: '700', color: Colors.textOnPrimary },
-  signOut: { alignItems: 'center', marginTop: 24, paddingVertical: 10 },
+  forgot: { alignItems: 'center', marginTop: 24, paddingVertical: 10 },
+  forgotText: { fontSize: 14, color: Colors.textSecondary, textDecorationLine: 'underline' },
+  signOut: { alignItems: 'center', marginTop: 4, paddingVertical: 10 },
   signOutText: { fontSize: 14, color: Colors.textSecondary },
 });

@@ -1,5 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getUserId } from './supabase';
+import { clearAllEntryCaches } from './cache';
 import {
   generateKey,
   generateSaltB64,
@@ -128,4 +130,19 @@ export async function lockVault(): Promise<void> {
   } catch {
     // ignore
   }
+}
+
+// Forgotten password: there is no recovery, only a fresh start. This permanently
+// deletes the (unreadable) entries and the vault so a new password can be set.
+export async function resetVault(): Promise<void> {
+  const userId = await getUserId();
+  if (!userId) return;
+
+  await supabase.from('entries').delete().eq('user_id', userId);
+  await supabase.from('weekly_summaries').delete().eq('user_id', userId);
+  await supabase.from('vault').delete().eq('user_id', userId);
+
+  await clearAllEntryCaches();
+  await AsyncStorage.multiRemove(['sowfar:insights', 'sowfar:quote', 'sowfar:reframeAck']).catch(() => {});
+  await lockVault();
 }

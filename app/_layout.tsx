@@ -73,6 +73,7 @@ export default function RootLayout() {
   }, [authReady, session, vaultStatus, segments]);
 
   const onUnlocked = useCallback(() => setVaultStatus('ready'), []);
+  const onReset = useCallback(() => setVaultStatus('setup'), []);
 
   if (!authReady) {
     return (
@@ -84,7 +85,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <VaultUiContext.Provider value={{ onUnlocked }}>
+      <VaultUiContext.Provider value={{ onUnlocked, onReset }}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="login" />
           <Stack.Screen name="vault-setup" />
