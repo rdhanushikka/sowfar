@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Share,
 } from 'react-native';
 import { Colors } from '../constants/colors';
 import { setupVault } from '../services/vault';
@@ -17,8 +18,11 @@ import { useVaultUi } from '../services/vaultUi';
 
 export default function VaultSetupScreen() {
   const { onUnlocked } = useVaultUi();
+  const [step, setStep] = useState<'create' | 'recovery'>('create');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -32,12 +36,61 @@ export default function VaultSetupScreen() {
     setBusy(true);
     setError('');
     try {
-      await setupVault(password);
-      onUnlocked();
+      const code = await setupVault(password);
+      setRecoveryCode(code);
+      setStep('recovery');
     } catch {
       setError('Something went wrong. Please try again.');
+    } finally {
       setBusy(false);
     }
+  }
+
+  async function handleShare() {
+    try {
+      await Share.share({ message: `My Sowfar recovery code: ${recoveryCode}` });
+      setSaved(true);
+    } catch {
+      // user cancelled share
+    }
+  }
+
+  if (step === 'recovery') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.title}>Save your recovery code</Text>
+          <Text style={styles.body}>
+            If you ever forget your password, this code is the only way back into your journal.
+            Save it somewhere safe — a password manager is best. We can’t recover it for you.
+          </Text>
+
+          <View style={styles.codeCard}>
+            <Text style={styles.codeText}>{recoveryCode}</Text>
+          </View>
+
+          <TouchableOpacity style={styles.secondaryPill} onPress={handleShare} activeOpacity={0.85}>
+            <Text style={styles.secondaryPillText}>Save code…</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.checkRow} onPress={() => setSaved(s => !s)} activeOpacity={0.7}>
+            <View style={[styles.checkbox, saved && styles.checkboxOn]}>
+              {saved && <Text style={styles.checkMark}>✓</Text>}
+            </View>
+            <Text style={styles.checkLabel}>I’ve saved my recovery code somewhere safe</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.pill, !saved && styles.pillDisabled]}
+            onPress={onUnlocked}
+            disabled={!saved}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.pillText}>Enter my journal</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -52,8 +105,8 @@ export default function VaultSetupScreen() {
 
           <View style={styles.warnCard}>
             <Text style={styles.warnText}>
-              There is no way to reset it. If you forget this password, your journal cannot be
-              recovered. Consider saving it in a password manager.
+              There is no way to reset it. If you forget this password (and your recovery code),
+              your journal cannot be recovered. Consider saving it in a password manager.
             </Text>
           </View>
 
@@ -86,7 +139,7 @@ export default function VaultSetupScreen() {
             {busy ? (
               <ActivityIndicator color={Colors.textOnPrimary} />
             ) : (
-              <Text style={styles.pillText}>Create password</Text>
+              <Text style={styles.pillText}>Continue</Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -122,4 +175,38 @@ const styles = StyleSheet.create({
   },
   pillDisabled: { opacity: 0.4 },
   pillText: { fontSize: 16, fontWeight: '700', color: Colors.textOnPrimary },
+
+  codeCard: {
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.borderDark,
+    borderRadius: 6,
+    padding: 22,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  codeText: { fontSize: 20, fontWeight: '800', color: Colors.text, letterSpacing: 2, textAlign: 'center' },
+  secondaryPill: {
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.borderDark,
+    borderRadius: 100,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  secondaryPillText: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: Colors.borderDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  checkMark: { color: Colors.textOnPrimary, fontSize: 15, fontWeight: '800' },
+  checkLabel: { flex: 1, fontSize: 15, color: Colors.text, lineHeight: 21 },
 });

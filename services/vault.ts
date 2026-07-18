@@ -10,6 +10,8 @@ import {
   unwrapKey,
   keyToB64,
   keyFromB64,
+  generateRecoveryCode,
+  normalizeCode,
 } from './crypto';
 
 // Manages the per-user journal key: the secret that encrypts entries. The key
@@ -23,6 +25,8 @@ let journalKey: Uint8Array | null = null;
 interface VaultRow {
   salt: string;
   wrapped_key: string;
+  recovery_salt: string | null;
+  wrapped_key_recovery: string | null;
 }
 
 async function getVaultRow(): Promise<VaultRow | null> {
@@ -30,7 +34,7 @@ async function getVaultRow(): Promise<VaultRow | null> {
   if (!userId) return null;
   const { data } = await supabase
     .from('vault')
-    .select('salt, wrapped_key')
+    .select('salt, wrapped_key, recovery_salt, wrapped_key_recovery')
     .eq('user_id', userId)
     .single();
   return (data as VaultRow) ?? null;
@@ -73,22 +77,37 @@ async function cache(key: Uint8Array): Promise<void> {
   }
 }
 
-// First-time setup: create the journal key and lock it with the password.
-export async function setupVault(password: string): Promise<void> {
+// First-time setup: create the journal key, lock it with the password AND with
+// a generated recovery code (same key, two doors). Returns the recovery code to
+// show the user once.
+export async function setupVault(password: string): Promise<string> {
   const userId = await getUserId();
   if (!userId) throw new Error('NOT_SIGNED_IN');
 
   const key = generateKey();
+
   const salt = generateSaltB64();
   const kek = await deriveKEK(password, salt);
   const wrapped = wrapKey(key, kek);
 
+  const recoveryCode = generateRecoveryCode();
+  const recoverySalt = generateSaltB64();
+  const recKek = await deriveKEK(normalizeCode(recoveryCode), recoverySalt);
+  const recWrapped = wrapKey(key, recKek);
+
   await supabase.from('vault').upsert(
-    { user_id: userId, salt, wrapped_key: wrapped },
+    {
+      user_id: userId,
+      salt,
+      wrapped_key: wrapped,
+      recovery_salt: recoverySalt,
+      wrapped_key_recovery: recWrapped,
+    },
     { onConflict: 'user_id' }
   );
 
   await cache(key);
+  return recoveryCode;
 }
 
 // Returns true if the password unlocked the vault, false if it was wrong.
@@ -102,6 +121,33 @@ export async function unlockVault(password: string): Promise<boolean> {
 
   await cache(key);
   return true;
+}
+
+// Unlock with the recovery code instead of the password.
+export async function unlockWithRecovery(code: string): Promise<boolean> {
+  const row = await getVaultRow();
+  if (!row?.recovery_salt || !row?.wrapped_key_recovery) return false;
+
+  const kek = await deriveKEK(normalizeCode(code), row.recovery_salt);
+  const key = unwrapKey(row.wrapped_key_recovery, kek);
+  if (!key) return false;
+
+  await cache(key);
+  return true;
+}
+
+// Set a new password for an already-unlocked journal (e.g. right after a
+// recovery). Re-wraps the in-memory journal key; entries are untouched.
+export async function setNewPassword(newPassword: string): Promise<void> {
+  const userId = await getUserId();
+  if (!userId) throw new Error('NOT_SIGNED_IN');
+  const key = getJournalKey();
+
+  const salt = generateSaltB64();
+  const kek = await deriveKEK(newPassword, salt);
+  const wrapped = wrapKey(key, kek);
+
+  await supabase.from('vault').update({ salt, wrapped_key: wrapped }).eq('user_id', userId);
 }
 
 export async function changePassword(oldPw: string, newPw: string): Promise<boolean> {

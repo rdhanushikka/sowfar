@@ -72,3 +72,37 @@ export function unwrapKey(wrappedB64: string, kek: Uint8Array): Uint8Array | nul
 
 export const keyToB64 = (k: Uint8Array): string => util.encodeBase64(k);
 export const keyFromB64 = (s: string): Uint8Array => util.decodeBase64(s);
+
+// ── Recovery code ────────────────────────────────────────────────────────────
+// Crockford base32 (no I, L, O, U) so the code is easy to read and type.
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+function encodeBase32(bytes: Uint8Array): string {
+  let bits = 0, value = 0, out = '';
+  for (const b of bytes) {
+    value = ((value << 8) | b) >>> 0;
+    bits += 8;
+    while (bits >= 5) {
+      out += B32[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+    value &= bits === 0 ? 0 : (1 << bits) - 1;
+  }
+  if (bits > 0) out += B32[(value << (5 - bits)) & 31];
+  return out;
+}
+
+// 120 bits of entropy, shown as 6 groups of 4: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
+export function generateRecoveryCode(): string {
+  const raw = encodeBase32(randomBytes(15));
+  return (raw.match(/.{1,4}/g) ?? []).join('-');
+}
+
+// Normalize user-typed codes: strip separators, uppercase, fix common misreads.
+export function normalizeCode(code: string): string {
+  return code
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, '')
+    .replace(/O/g, '0')
+    .replace(/[IL]/g, '1');
+}
