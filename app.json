@@ -43,6 +43,12 @@
         "projectId": "0d3fb670-e2ae-4e6d-86ab-c768183dcdd5"
       }
     },
-    "owner": "rdhanushikka"
+    "owner": "rdhanushikka",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/0d3fb670-e2ae-4e6d-86ab-c768183dcdd5"
+    }
   }
 }
