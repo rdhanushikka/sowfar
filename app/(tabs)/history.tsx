@@ -65,9 +65,21 @@ export default function HistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const stripRef = useRef<ScrollView>(null);
+  const listRef = useRef<ScrollView>(null);
+  const cardPositions = useRef<Record<string, number>>({});
 
   const entryDates = useMemo(() => new Set(entries.map(e => e.date)), [entries]);
   const stripDays = useMemo(() => buildStripDays(entryDates), [entryDates]);
+
+  // Open the entry AND bring it into view — expanding something below the
+  // fold with no scroll looks like nothing happened.
+  function openFromStrip(date: string) {
+    setExpanded(prev => (prev === date ? null : date));
+    setTimeout(() => {
+      const y = cardPositions.current[date];
+      if (y !== undefined) listRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    }, 100);
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -101,7 +113,7 @@ export default function HistoryScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={listRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.header}>Past entries</Text>
 
         {/* Scrollable day strip — today at the right, scroll left for the past */}
@@ -125,7 +137,7 @@ export default function HistoryScreen() {
                     day.isToday && styles.stripToday,
                     selected && styles.stripSelected,
                   ]}
-                  onPress={() => hasEntry && setExpanded(selected ? null : day.date)}
+                  onPress={() => hasEntry && openFromStrip(day.date)}
                   activeOpacity={hasEntry ? 0.7 : 1}
                 >
                   <Text style={styles.stripWeekday}>{day.weekday}</Text>
@@ -145,6 +157,7 @@ export default function HistoryScreen() {
           <TouchableOpacity
             key={entry.date}
             style={styles.card}
+            onLayout={e => { cardPositions.current[entry.date] = e.nativeEvent.layout.y; }}
             onPress={() => setExpanded(expanded === entry.date ? null : entry.date)}
             activeOpacity={0.85}
           >

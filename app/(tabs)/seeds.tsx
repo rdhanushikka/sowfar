@@ -76,6 +76,12 @@ export default function SeedsScreen() {
   const active = seeds.filter(s => s.status === 'active');
   const bloomed = seeds.filter(s => s.status === 'bloomed');
 
+  function handleCancelPlant() {
+    setText('');
+    setWhy('');
+    setPlanting(false);
+  }
+
   async function handlePlant() {
     if (!text.trim()) return;
     setBusy(true);
@@ -217,23 +223,24 @@ export default function SeedsScreen() {
               <Text style={styles.plantQuestion}>What do you want to grow?</Text>
               <TextInput
                 style={styles.plantInput}
-                placeholder="a calmer morning… the courage to speak up… the move…"
+                placeholder="the marathon… a calmer morning… speaking up…"
                 placeholderTextColor={Colors.textSecondary}
                 value={text}
                 onChangeText={setText}
                 multiline
                 autoFocus
               />
+              <Text style={styles.plantWhyLabel}>Why this? — optional, for your future self</Text>
               <TextInput
                 style={styles.plantWhy}
-                placeholder="Why this? (optional, for your future self)"
+                placeholder="…"
                 placeholderTextColor={Colors.textSecondary}
                 value={why}
                 onChangeText={setWhy}
                 multiline
               />
               <View style={styles.plantActions}>
-                <TouchableOpacity onPress={() => setPlanting(false)} style={styles.cancelBtn}>
+                <TouchableOpacity onPress={handleCancelPlant} style={styles.cancelBtn}>
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -353,20 +360,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
     lineHeight: 23,
-    minHeight: 60,
+    minHeight: 70,
     textAlignVertical: 'top',
-    marginBottom: 10,
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
   },
+  plantWhyLabel: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary, marginBottom: 6 },
   plantWhy: {
     fontSize: 14,
     color: Colors.text,
     lineHeight: 20,
-    minHeight: 40,
+    minHeight: 44,
     textAlignVertical: 'top',
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 10,
-    marginBottom: 12,
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
   },
   plantActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 16 },
   cancelBtn: { paddingVertical: 8 },

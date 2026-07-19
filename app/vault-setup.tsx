@@ -12,6 +12,7 @@ import {
   ScrollView,
   Share,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Colors } from '../constants/colors';
 import { setupVault } from '../services/vault';
 import { useVaultUi } from '../services/vaultUi';
@@ -58,14 +59,11 @@ export default function VaultSetupScreen() {
 
   async function handleCopy() {
     try {
-      // Lazy require: on builds made before expo-clipboard was added, the
-      // native module is missing — fall back gracefully instead of crashing.
-      const Clipboard = require('expo-clipboard');
       await Clipboard.setStringAsync(recoveryCode);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      // Older build without the clipboard module — Share still works.
+      // clipboard unavailable — Share still works
     }
   }
 
@@ -122,8 +120,8 @@ export default function VaultSetupScreen() {
           <Text style={styles.mark}>✦</Text>
           <Text style={styles.title}>One password, just for your journal</Text>
           <Text style={styles.body}>
-            Everything you write is locked with it before it ever leaves your phone —
-            not even we can read your entries.
+            Everything you write is sealed on your phone before it's saved.
+            Only this password can open it.
           </Text>
 
           <TextInput
