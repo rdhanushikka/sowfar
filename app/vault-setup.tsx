@@ -61,8 +61,8 @@ export default function VaultSetupScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.title}>Save your recovery code</Text>
           <Text style={styles.body}>
-            If you ever forget your password, this code is the only way back into your journal.
-            Save it somewhere safe — a password manager is best. We can’t recover it for you.
+            If you ever forget your password, this code is the only way back into your journal —
+            we can’t recover it for you.
           </Text>
 
           <View style={styles.codeCard}>
@@ -72,6 +72,9 @@ export default function VaultSetupScreen() {
           <TouchableOpacity style={styles.secondaryPill} onPress={handleShare} activeOpacity={0.85}>
             <Text style={styles.secondaryPillText}>Save code…</Text>
           </TouchableOpacity>
+          <Text style={styles.tip}>
+            Tip: save it as a note in Apple Passwords or your password manager, so it’s encrypted and never lost.
+          </Text>
 
           <TouchableOpacity style={styles.checkRow} onPress={() => setSaved(s => !s)} activeOpacity={0.7}>
             <View style={[styles.checkbox, saved && styles.checkboxOn]}>
@@ -97,18 +100,12 @@ export default function VaultSetupScreen() {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Set a journal password</Text>
+          <Text style={styles.mark}>✦</Text>
+          <Text style={styles.title}>One password, just for your journal</Text>
           <Text style={styles.body}>
-            Your entries are encrypted with this password before they ever leave your phone.
-            Not even we can read them.
+            Everything you write is locked with it before it ever leaves your phone —
+            not even we can read your entries.
           </Text>
-
-          <View style={styles.warnCard}>
-            <Text style={styles.warnText}>
-              There is no way to reset it. If you forget this password (and your recovery code),
-              your journal cannot be recovered. Consider saving it in a password manager.
-            </Text>
-          </View>
 
           <TextInput
             style={styles.input}
@@ -129,6 +126,10 @@ export default function VaultSetupScreen() {
           />
 
           {!!error && <Text style={styles.error}>{error}</Text>}
+
+          <Text style={styles.caution}>
+            Only you hold this password, so keep it somewhere safe — a password manager is perfect.
+          </Text>
 
           <TouchableOpacity
             style={[styles.pill, !valid && styles.pillDisabled]}
@@ -151,15 +152,16 @@ export default function VaultSetupScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   content: { padding: 24, paddingTop: 40 },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.text, letterSpacing: -0.5, marginBottom: 12 },
-  body: { fontSize: 16, color: Colors.textSecondary, lineHeight: 24, marginBottom: 20 },
-  warnCard: { backgroundColor: Colors.yellow, borderRadius: 6, padding: 16, marginBottom: 24 },
-  warnText: { fontSize: 14, color: Colors.text, lineHeight: 21, fontWeight: '500' },
+  mark: { fontSize: 34, color: Colors.primary, marginBottom: 18 },
+  title: { fontSize: 26, fontWeight: '700', color: Colors.text, letterSpacing: -0.4, marginBottom: 12 },
+  body: { fontSize: 16, color: Colors.textSecondary, lineHeight: 24, marginBottom: 24 },
+  caution: { fontSize: 13, color: Colors.textSecondary, lineHeight: 19, marginBottom: 16, marginTop: 4 },
+  tip: { fontSize: 13, color: Colors.textSecondary, lineHeight: 19, marginBottom: 24, marginTop: -12, paddingHorizontal: 4 },
   input: {
     backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.borderDark,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 16,
     fontSize: 17,
     color: Colors.text,
@@ -180,7 +182,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderWidth: 1.5,
     borderColor: Colors.borderDark,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 22,
     marginBottom: 20,
     alignItems: 'center',

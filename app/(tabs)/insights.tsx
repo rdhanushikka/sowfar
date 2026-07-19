@@ -60,6 +60,14 @@ export default function InsightsScreen() {
     setStreak(computeStreak(entries.map(e => e.date)));
 
     setLoading(false);
+
+    // Eligible but nothing cached yet: generate silently in the background.
+    // The section simply appears once it's ready — never a user-facing load.
+    if (!cachedPatterns && entries.length >= MIN_ENTRIES) {
+      refreshPatterns()
+        .then(p => { if (p) setPatterns(p); })
+        .catch(() => {});
+    }
   }
 
   // Dev: run an action, clear derived caches, and reload.
@@ -70,7 +78,9 @@ export default function InsightsScreen() {
     await load();
   }
 
+  // Silent refresh: swap content in place when the new patterns arrive.
   async function handleGenerate() {
+    if (generating) return;
     setGenerating(true);
     const result = await refreshPatterns(true);
     if (result) setPatterns(result);
@@ -123,15 +133,12 @@ export default function InsightsScreen() {
         ) : (
           <>
             {patterns.length === 0 ? (
-              <View style={styles.generateCard}>
-                <Text style={styles.generateTitle}>You have {entryCount} entries.</Text>
-                <Text style={styles.generateSub}>Ready to see what patterns show up in your reflections?</Text>
-                <TouchableOpacity style={styles.pillBtn} onPress={handleGenerate} disabled={generating} activeOpacity={0.8}>
-                  {generating
-                    ? <ActivityIndicator color={Colors.textOnPrimary} />
-                    : <Text style={styles.pillBtnText}>See my patterns</Text>
-                  }
-                </TouchableOpacity>
+              // Patterns generate silently in the background; nothing to tap,
+              // nothing to wait on — the section appears when it's ready.
+              <View style={styles.quietCard}>
+                <Text style={styles.quietCardText}>
+                  Your patterns are taking shape. They'll appear here soon.
+                </Text>
               </View>
             ) : (
               <>
@@ -163,7 +170,7 @@ export default function InsightsScreen() {
                       </View>
                     ))}
                     <TouchableOpacity onPress={handleGenerate} disabled={generating} style={styles.refreshBtn}>
-                      <Text style={styles.refreshText}>{generating ? 'Refreshing...' : 'Refresh insights'}</Text>
+                      <Text style={styles.refreshText}>Refresh insights</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -236,7 +243,7 @@ const styles = StyleSheet.create({
 
   lockedCard: {
     backgroundColor: Colors.card,
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.borderDark,
     padding: 24,
@@ -246,23 +253,14 @@ const styles = StyleSheet.create({
   progressBar: { height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 3 },
 
-  generateCard: {
+  quietCard: {
     backgroundColor: Colors.card,
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.borderDark,
-    padding: 24,
+    borderColor: Colors.border,
+    padding: 20,
   },
-  generateTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 8 },
-  generateSub: { fontSize: 15, color: Colors.textSecondary, lineHeight: 22, marginBottom: 24 },
-
-  pillBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 100,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  pillBtnText: { fontSize: 16, fontWeight: '700', color: Colors.textOnPrimary },
+  quietCardText: { fontSize: 15, color: Colors.textSecondary, lineHeight: 22 },
 
   patternsToggle: {
     flexDirection: 'row',
@@ -271,7 +269,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderWidth: 1.5,
     borderColor: Colors.borderDark,
-    borderRadius: 6,
+    borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 18,
     marginBottom: 16,
@@ -290,7 +288,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   patternCard: {
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 20,
     marginBottom: 12,
   },
@@ -307,7 +305,7 @@ const styles = StyleSheet.create({
   devPanel: {
     marginTop: 48,
     padding: 16,
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     borderStyle: 'dashed',
@@ -322,7 +320,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.borderDark,
-    borderRadius: 6,
+    borderRadius: 16,
     paddingVertical: 12,
     alignItems: 'center',
   },
@@ -336,7 +334,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.borderDark,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 20,
     marginBottom: 24,
   },

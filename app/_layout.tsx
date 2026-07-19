@@ -67,9 +67,12 @@ export default function RootLayout() {
       if (group !== 'login') router.replace('/login');
       return;
     }
+    const onAuthScreen = group === 'login' || group === 'vault-setup' || group === 'vault-unlock';
     if (vaultStatus === 'setup' && group !== 'vault-setup') router.replace('/vault-setup');
     else if (vaultStatus === 'unlock' && group !== 'vault-unlock') router.replace('/vault-unlock');
-    else if (vaultStatus === 'ready' && group !== '(tabs)') router.replace('/(tabs)');
+    // Once ready, only pull the user out of auth screens — leave app routes
+    // (tabs, edit modal, future screens) alone.
+    else if (vaultStatus === 'ready' && onAuthScreen) router.replace('/(tabs)');
   }, [authReady, session, vaultStatus, segments]);
 
   const onUnlocked = useCallback(() => setVaultStatus('ready'), []);

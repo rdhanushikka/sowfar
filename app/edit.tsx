@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   },
   textArea: {
     backgroundColor: Colors.card,
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.borderDark,
     padding: 16,
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
   },
   readonlyChip: {
     backgroundColor: Colors.card,
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 16,

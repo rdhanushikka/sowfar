@@ -18,9 +18,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../constants/colors';
 import { JournalPhase, PromptAnswer } from '../../types';
 import { getPrompt1, getPrompt2 } from '../../constants/prompts';
-import { shouldAskFollowup, generateFollowup, generateReframe, generateWeeklySummary } from '../../services/claude';
+import {
+  shouldAskFollowup,
+  generateFollowup,
+  generateReframe,
+  generateWeeklySummary,
+  detectSeedMoment,
+  SEED_MOMENT_CHANCE,
+} from '../../services/claude';
 import { getDailyQuote } from '../../services/quote';
 import { refreshPatterns } from '../../services/insights';
+import { getDailyMemory, Memory } from '../../services/memory';
+import { getActiveSeeds, seedDueForCheckin, recordCheckin, addMoment } from '../../services/seeds';
+import { Seed } from '../../types';
 import { Quote } from '../../constants/quotes';
 import { now } from '../../services/clock';
 import {
@@ -62,6 +72,11 @@ function getGreeting(): string {
   return 'Good evening.';
 }
 
+function formatMemoryDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+}
+
 export default function TonightScreen() {
   const [phase, setPhase] = useState<JournalPhase>('init');
   const [weeklySummary, setWeeklySummary] = useState<string | null>(null);
@@ -79,6 +94,8 @@ export default function TonightScreen() {
   const [reframeAcked, setReframeAcked] = useState(false);
   const [streak, setStreak] = useState(0);
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [memory, setMemory] = useState<Memory | null>(null);
+  const [checkinSeed, setCheckinSeed] = useState<Seed | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -87,8 +104,12 @@ export default function TonightScreen() {
   }, []);
 
   async function load() {
-    // Quote and streak power both the landing and completion screens.
+    // Quote, memory, and streak power both the landing and completion screens.
     getDailyQuote().then(setQuote).catch(() => {});
+    getDailyMemory().then(setMemory).catch(() => {});
+    getActiveSeeds()
+      .then(seeds => setCheckinSeed(seedDueForCheckin(seeds)))
+      .catch(() => {});
     getCachedAllEntries().then(list => {
       if (list) setStreak(computeStreak(list.map(e => e.date)));
     });
@@ -218,6 +239,43 @@ export default function TonightScreen() {
         })
         .catch(() => {});
     }
+
+    // Rarely, check if tonight's entry is unmistakable progress on a seed.
+    if (substance.length >= REFRAME_MIN_CHARS && Math.random() < SEED_MOMENT_CHANCE) {
+      detectSeedMomentInBackground(substance);
+    }
+  }
+
+  async function detectSeedMomentInBackground(entryText: string) {
+    try {
+      const seeds = await getActiveSeeds();
+      if (seeds.length === 0) return;
+
+      // At most one auto-moment per seed per week — keep it rare and earned.
+      const weekAgo = new Date(localDateStr() + 'T00:00:00');
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const cutoff = `${weekAgo.getFullYear()}-${String(weekAgo.getMonth() + 1).padStart(2, '0')}-${String(weekAgo.getDate()).padStart(2, '0')}`;
+      const eligible = seeds.filter(
+        s => !s.moments.some(m => m.source === 'auto' && m.date >= cutoff)
+      );
+      if (eligible.length === 0) return;
+
+      const hit = await detectSeedMoment(entryText, eligible.map(s => ({ text: s.text })));
+      if (hit && eligible[hit.index]) {
+        await addMoment(eligible[hit.index], hit.note, 'auto');
+      }
+    } catch {
+      // silent — this is a bonus, never a failure the user sees
+    }
+  }
+
+  async function handleCheckin(seed: Seed, movedForward: boolean) {
+    setCheckinSeed(null);
+    try {
+      await recordCheckin(seed, movedForward);
+    } catch {
+      // silent
+    }
   }
 
   // Dismiss the reframe for the rest of today.
@@ -254,6 +312,7 @@ export default function TonightScreen() {
               greeting={getGreeting()}
               streak={streak}
               quote={quote}
+              memory={memory}
               onStart={() => fadeTransition('prompt1')}
             />
           )}
@@ -322,6 +381,10 @@ export default function TonightScreen() {
               onAckReframe={ackReframe}
               streak={streak}
               quote={quote}
+              memory={memory}
+              checkinSeed={checkinSeed}
+              onCheckin={handleCheckin}
+              onSkipCheckin={() => setCheckinSeed(null)}
             />
           )}
         </Animated.View>
@@ -571,12 +634,14 @@ function LandingView({
   greeting,
   streak,
   quote,
+  memory,
   onStart,
 }: {
   dateLabel: string;
   greeting: string;
   streak: number;
   quote: Quote | null;
+  memory: Memory | null;
   onStart: () => void;
 }) {
   return (
@@ -602,6 +667,13 @@ function LandingView({
         </View>
       )}
 
+      {memory && (
+        <View style={styles.memoryCard}>
+          <Text style={styles.memoryLabel}>FROM YOUR JOURNAL · {formatMemoryDate(memory.date)}</Text>
+          <Text style={styles.memoryText}>“{memory.line}”</Text>
+        </View>
+      )}
+
       <View style={styles.homeFooter}>
         <TouchableOpacity style={styles.primaryPill} onPress={onStart} activeOpacity={0.85}>
           <Text style={styles.primaryPillText}>Add today's entry</Text>
@@ -617,12 +689,20 @@ function CompleteView({
   onAckReframe,
   streak,
   quote,
+  memory,
+  checkinSeed,
+  onCheckin,
+  onSkipCheckin,
 }: {
   reframe: string | null;
   reframeAcked: boolean;
   onAckReframe: () => void;
   streak: number;
   quote: Quote | null;
+  memory: Memory | null;
+  checkinSeed: Seed | null;
+  onCheckin: (seed: Seed, movedForward: boolean) => void;
+  onSkipCheckin: () => void;
 }) {
   return (
     <ScrollView contentContainerStyle={styles.completeContent} showsVerticalScrollIndicator={false}>
@@ -643,6 +723,37 @@ function CompleteView({
           <Text style={styles.quoteHeroLabel}>A THOUGHT</Text>
           <Text style={styles.quoteHeroText}>“{quote.text}”</Text>
           <Text style={styles.quoteHeroAuthor}>— {quote.author}</Text>
+        </View>
+      )}
+
+      {/* A line from a past entry */}
+      {memory && (
+        <View style={styles.memoryCard}>
+          <Text style={styles.memoryLabel}>FROM YOUR JOURNAL · {formatMemoryDate(memory.date)}</Text>
+          <Text style={styles.memoryText}>“{memory.line}”</Text>
+        </View>
+      )}
+
+      {/* Seed check-in, when one is due */}
+      {checkinSeed && (
+        <View style={styles.checkinCard}>
+          <View style={styles.checkinHeader}>
+            <Ionicons name="leaf-outline" size={15} color={Colors.primary} />
+            <Text style={styles.checkinLabel}>YOUR SEED</Text>
+            <TouchableOpacity onPress={onSkipCheckin} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ marginLeft: 'auto' }}>
+              <Ionicons name="close" size={16} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.checkinSeedText}>“{checkinSeed.text}”</Text>
+          <Text style={styles.checkinQuestion}>Any sign of it lately?</Text>
+          <View style={styles.checkinActions}>
+            <TouchableOpacity style={styles.checkinYes} onPress={() => onCheckin(checkinSeed, true)} activeOpacity={0.85}>
+              <Text style={styles.checkinYesText}>A little</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.checkinNo} onPress={() => onCheckin(checkinSeed, false)} activeOpacity={0.85}>
+              <Text style={styles.checkinNoText}>Not yet</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -748,7 +859,7 @@ const styles = StyleSheet.create({
 
   textArea: {
     backgroundColor: Colors.card,
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.borderDark,
     padding: 16,
@@ -765,7 +876,7 @@ const styles = StyleSheet.create({
   yesNoRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
   yesNoBtn: {
     flex: 1,
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: Colors.borderDark,
     paddingVertical: 20,
@@ -778,7 +889,7 @@ const styles = StyleSheet.create({
 
   mcqList: { gap: 10, marginBottom: 24 },
   mcqOption: {
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: Colors.border,
     paddingVertical: 16,
@@ -801,7 +912,7 @@ const styles = StyleSheet.create({
 
   summaryCard: {
     backgroundColor: Colors.primary,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 22,
     marginBottom: 28,
   },
@@ -809,7 +920,7 @@ const styles = StyleSheet.create({
 
   followupCard: {
     backgroundColor: Colors.pink,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 20,
     marginBottom: 20,
   },
@@ -836,7 +947,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 22,
     marginTop: 28,
     borderLeftWidth: 4,
@@ -869,7 +980,7 @@ const styles = StyleSheet.create({
 
   reframeCard: {
     backgroundColor: Colors.green,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 20,
     marginBottom: 20,
   },
@@ -922,7 +1033,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderLeftWidth: 5,
     borderLeftColor: Colors.primary,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 24,
   },
   quoteHeroLabel: {
@@ -934,6 +1045,50 @@ const styles = StyleSheet.create({
   },
   quoteHeroText: { fontSize: 22, color: Colors.text, lineHeight: 32, fontWeight: '600' },
   quoteHeroAuthor: { fontSize: 14, color: Colors.textSecondary, marginTop: 16, fontWeight: '600' },
+
+  memoryCard: {
+    backgroundColor: Colors.primary + '14',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 16,
+  },
+  memoryLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: Colors.primaryDark,
+    marginBottom: 10,
+  },
+  memoryText: { fontSize: 16, color: Colors.text, lineHeight: 24, fontStyle: 'italic' },
+
+  checkinCard: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 16,
+    padding: 18,
+    marginTop: 16,
+  },
+  checkinHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  checkinLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, color: Colors.primary },
+  checkinSeedText: { fontSize: 16, fontWeight: '600', color: Colors.text, lineHeight: 23, marginBottom: 6 },
+  checkinQuestion: { fontSize: 14, color: Colors.textSecondary, marginBottom: 14 },
+  checkinActions: { flexDirection: 'row', gap: 10 },
+  checkinYes: {
+    backgroundColor: Colors.primary,
+    borderRadius: 100,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+  },
+  checkinYesText: { fontSize: 14, fontWeight: '700', color: Colors.textOnPrimary },
+  checkinNo: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 100,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+  },
+  checkinNoText: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary },
 
   landingGreeting: { fontSize: 30, fontWeight: '800', color: Colors.text, letterSpacing: -0.5, marginBottom: 8 },
   landingSub: { fontSize: 16, color: Colors.textSecondary, marginBottom: 28, lineHeight: 22 },

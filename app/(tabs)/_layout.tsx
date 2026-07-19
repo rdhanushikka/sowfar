@@ -50,6 +50,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="seeds"
+        options={{
+          title: 'Seeds',
+          tabBarIcon: ({ focused }) => <TabIcon name="leaf" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="insights"
         options={{
           title: 'You',

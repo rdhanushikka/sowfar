@@ -31,6 +31,25 @@ export interface WeeklySummary {
   created_at?: string;
 }
 
+export type SeedStatus = 'active' | 'bloomed' | 'released';
+
+export interface SeedMoment {
+  date: string;
+  note: string;
+  source: 'checkin' | 'auto';
+}
+
+export interface Seed {
+  id: string;
+  text: string;          // "What do you want to grow?"
+  why?: string;          // optional note to future self
+  planted_date: string;
+  status: SeedStatus;
+  ended_date?: string | null;   // bloomed/released date
+  last_checkin?: string | null;
+  moments: SeedMoment[];
+}
+
 export type JournalPhase =
   | 'init'
   | 'landing'

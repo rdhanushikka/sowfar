@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.borderDark,
-    borderRadius: 6,
+    borderRadius: 16,
     padding: 16,
     fontSize: 17,
     color: Colors.text,

@@ -186,6 +186,7 @@ export async function resetVault(): Promise<void> {
 
   await supabase.from('entries').delete().eq('user_id', userId);
   await supabase.from('weekly_summaries').delete().eq('user_id', userId);
+  await supabase.from('seeds').delete().eq('user_id', userId);
   await supabase.from('vault').delete().eq('user_id', userId);
 
   await clearAllEntryCaches();

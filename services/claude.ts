@@ -125,6 +125,46 @@ Write a warm, personal 2–3 sentence reflection on their week. Notice patterns,
   return data.content[0].text.trim();
 }
 
+// How often we even look for a seed moment in tonight's entry. Rare on purpose —
+// when it fires, it should feel uncanny, not chatty.
+export const SEED_MOMENT_CHANCE = 0.25;
+
+// Returns the index of a seed that tonight's entry gives UNMISTAKABLE evidence
+// of progress on, plus a short note — or null almost always.
+export async function detectSeedMoment(
+  entryText: string,
+  seeds: { text: string }[]
+): Promise<{ index: number; note: string } | null> {
+  const seedList = seeds.map((s, i) => `${i}. "${s.text}"`).join('\n');
+
+  const prompt = `Someone keeps a journal and has planted these intentions ("seeds"):
+
+${seedList}
+
+Here is tonight's journal entry:
+
+${entryText}
+
+Did tonight's entry give UNMISTAKABLE, direct evidence of real progress on exactly one of these seeds? The bar is high: the entry must concretely describe an action or event that clearly advances that specific intention. Thematic similarity, mood overlap, or vague relevance does NOT count — return null for those. When in doubt, return null.
+
+If (and only if) the bar is met, return the seed's index and one short warm sentence noting what happened, written to the person as "you" (e.g. "You led the meeting today — the thing you planted in June.").
+
+Return ONLY valid JSON: { "index": 0, "note": "..." } or null`;
+
+  const text = await callClaude(prompt, 200);
+  const trimmed = text.trim();
+  if (/^null$/i.test(trimmed)) return null;
+  const match = trimmed.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]) as { index: number; note: string };
+    if (!Number.isInteger(parsed.index) || !parsed.note) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export async function pickQuoteIndex(
   entries: { prompts: PromptAnswer[]; freeWrite: string }[],
   quotes: { text: string; author: string }[]
@@ -191,6 +231,8 @@ export async function generateInsights(
 ${entriesText}
 
 Notice 3 genuine patterns in what this person writes about, how they talk about themselves, what lights them up, what weighs on them. For each pattern, write one short observation (1-2 sentences). Be specific — name actual things from their entries, not generic observations. Write like someone who has been quietly paying attention, not a life coach.
+
+Address the person DIRECTLY as "you" — never "this person," "they," or any third-person framing. Each observation should read like a quiet note written to them (e.g. "Running is the only time your mind goes quiet — you know the medicine but keep forgetting to take it.").
 
 Return ONLY valid JSON:
 { "patterns": ["observation 1", "observation 2", "observation 3"] }`;

@@ -41,6 +41,15 @@ async function isStale(): Promise<boolean> {
   return daysBetween(stored.generatedDate, localDateStr()) >= REFRESH_DAYS;
 }
 
+// Patterns look at a recent window, not all time — "who you are lately."
+const WINDOW_DAYS = 30;
+
+function windowStartStr(): string {
+  const d = new Date(localDateStr() + 'T00:00:00');
+  d.setDate(d.getDate() - WINDOW_DAYS);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // Regenerate patterns and cache them. The background caller passes force=false,
 // so it only spends an API call when the cached patterns are a week old (or
 // missing). The manual "refresh" button passes force=true.
@@ -50,8 +59,13 @@ export async function refreshPatterns(force = false): Promise<string[] | null> {
       return getCachedPatterns();
     }
 
-    const entries = await getAllEntries();
-    if (entries.length < PATTERN_MIN_ENTRIES) return null;
+    const all = await getAllEntries();
+    if (all.length < PATTERN_MIN_ENTRIES) return null;
+
+    // Last 30 days only (also keeps the prompt bounded as history grows).
+    const start = windowStartStr();
+    const entries = all.filter(e => e.date >= start);
+    if (entries.length < 3) return null;
 
     const text = await generateInsights(
       entries.map(e => ({ date: e.date, prompts: e.prompts, freeWrite: e.free_write }))
