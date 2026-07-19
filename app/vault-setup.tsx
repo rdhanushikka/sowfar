@@ -23,6 +23,7 @@ export default function VaultSetupScreen() {
   const [confirm, setConfirm] = useState('');
   const [recoveryCode, setRecoveryCode] = useState('');
   const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -55,6 +56,19 @@ export default function VaultSetupScreen() {
     }
   }
 
+  async function handleCopy() {
+    try {
+      // Lazy require: on builds made before expo-clipboard was added, the
+      // native module is missing — fall back gracefully instead of crashing.
+      const Clipboard = require('expo-clipboard');
+      await Clipboard.setStringAsync(recoveryCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Older build without the clipboard module — Share still works.
+    }
+  }
+
   if (step === 'recovery') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -69,9 +83,14 @@ export default function VaultSetupScreen() {
             <Text style={styles.codeText}>{recoveryCode}</Text>
           </View>
 
-          <TouchableOpacity style={styles.secondaryPill} onPress={handleShare} activeOpacity={0.85}>
-            <Text style={styles.secondaryPillText}>Save code…</Text>
-          </TouchableOpacity>
+          <View style={styles.codeActions}>
+            <TouchableOpacity style={[styles.secondaryPill, { flex: 1 }]} onPress={handleCopy} activeOpacity={0.85}>
+              <Text style={styles.secondaryPillText}>{copied ? 'Copied ✓' : 'Copy code'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.secondaryPill, { flex: 1 }]} onPress={handleShare} activeOpacity={0.85}>
+              <Text style={styles.secondaryPillText}>Save code…</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.tip}>
             Tip: save it as a note in Apple Passwords or your password manager, so it’s encrypted and never lost.
           </Text>
@@ -188,6 +207,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   codeText: { fontSize: 20, fontWeight: '800', color: Colors.text, letterSpacing: 2, textAlign: 'center' },
+  codeActions: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   secondaryPill: {
     backgroundColor: Colors.card,
     borderWidth: 1.5,
@@ -195,7 +215,6 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: 24,
   },
   secondaryPillText: { fontSize: 16, fontWeight: '700', color: Colors.text },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 },
