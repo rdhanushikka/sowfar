@@ -28,7 +28,6 @@ import {
 } from '../../services/claude';
 import { getDailyQuote } from '../../services/quote';
 import { refreshPatterns } from '../../services/insights';
-import { getDailyMemory, Memory } from '../../services/memory';
 import { getActiveSeeds, seedDueForCheckin, recordCheckin, addMoment } from '../../services/seeds';
 import { Seed } from '../../types';
 import { Quote } from '../../constants/quotes';
@@ -72,11 +71,6 @@ function getGreeting(): string {
   return 'Good evening.';
 }
 
-function formatMemoryDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
-}
-
 export default function TonightScreen() {
   const [phase, setPhase] = useState<JournalPhase>('init');
   const [weeklySummary, setWeeklySummary] = useState<string | null>(null);
@@ -94,7 +88,6 @@ export default function TonightScreen() {
   const [reframeAcked, setReframeAcked] = useState(false);
   const [streak, setStreak] = useState(0);
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [memory, setMemory] = useState<Memory | null>(null);
   const [checkinSeed, setCheckinSeed] = useState<Seed | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -104,9 +97,8 @@ export default function TonightScreen() {
   }, []);
 
   async function load() {
-    // Quote, memory, and streak power both the landing and completion screens.
+    // Quote and streak power both the landing and completion screens.
     getDailyQuote().then(setQuote).catch(() => {});
-    getDailyMemory().then(setMemory).catch(() => {});
     getActiveSeeds()
       .then(seeds => setCheckinSeed(seedDueForCheckin(seeds)))
       .catch(() => {});
@@ -312,7 +304,6 @@ export default function TonightScreen() {
               greeting={getGreeting()}
               streak={streak}
               quote={quote}
-              memory={memory}
               onStart={() => fadeTransition('prompt1')}
             />
           )}
@@ -381,7 +372,6 @@ export default function TonightScreen() {
               onAckReframe={ackReframe}
               streak={streak}
               quote={quote}
-              memory={memory}
               checkinSeed={checkinSeed}
               onCheckin={handleCheckin}
               onSkipCheckin={() => setCheckinSeed(null)}
@@ -634,14 +624,12 @@ function LandingView({
   greeting,
   streak,
   quote,
-  memory,
   onStart,
 }: {
   dateLabel: string;
   greeting: string;
   streak: number;
   quote: Quote | null;
-  memory: Memory | null;
   onStart: () => void;
 }) {
   return (
@@ -667,13 +655,6 @@ function LandingView({
         </View>
       )}
 
-      {memory && (
-        <View style={styles.memoryCard}>
-          <Text style={styles.memoryLabel}>FROM YOUR JOURNAL · {formatMemoryDate(memory.date)}</Text>
-          <Text style={styles.memoryText}>“{memory.line}”</Text>
-        </View>
-      )}
-
       <View style={styles.homeFooter}>
         <TouchableOpacity style={styles.primaryPill} onPress={onStart} activeOpacity={0.85}>
           <Text style={styles.primaryPillText}>Add today's entry</Text>
@@ -689,7 +670,6 @@ function CompleteView({
   onAckReframe,
   streak,
   quote,
-  memory,
   checkinSeed,
   onCheckin,
   onSkipCheckin,
@@ -699,7 +679,6 @@ function CompleteView({
   onAckReframe: () => void;
   streak: number;
   quote: Quote | null;
-  memory: Memory | null;
   checkinSeed: Seed | null;
   onCheckin: (seed: Seed, movedForward: boolean) => void;
   onSkipCheckin: () => void;
@@ -727,13 +706,6 @@ function CompleteView({
       )}
 
       {/* A line from a past entry */}
-      {memory && (
-        <View style={styles.memoryCard}>
-          <Text style={styles.memoryLabel}>FROM YOUR JOURNAL · {formatMemoryDate(memory.date)}</Text>
-          <Text style={styles.memoryText}>“{memory.line}”</Text>
-        </View>
-      )}
-
       {/* Seed check-in, when one is due */}
       {checkinSeed && (
         <View style={styles.checkinCard}>
@@ -1045,21 +1017,6 @@ const styles = StyleSheet.create({
   },
   quoteHeroText: { fontSize: 22, color: Colors.text, lineHeight: 32, fontWeight: '600' },
   quoteHeroAuthor: { fontSize: 14, color: Colors.textSecondary, marginTop: 16, fontWeight: '600' },
-
-  memoryCard: {
-    backgroundColor: Colors.primary + '14',
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 16,
-  },
-  memoryLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    color: Colors.primaryDark,
-    marginBottom: 10,
-  },
-  memoryText: { fontSize: 16, color: Colors.text, lineHeight: 24, fontStyle: 'italic' },
 
   checkinCard: {
     backgroundColor: Colors.card,
